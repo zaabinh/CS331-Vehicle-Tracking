@@ -1,0 +1,20 @@
+train_stride: 5
+val_stride: 1
+test_stride: 1
+resize: false
+expected_width: 960
+expected_height: 540
+fps: 25
+# Unknown frames are not training negatives; retain them in the tracking timeline.
+unannotated_frame_policy: exclude_from_detection_and_evaluation
+preserve_occlusion: true
+preserve_truncation: true
+preserve_orientation: true
+preserve_ignored_regions: true
+clip_bbox_for_detection_export: true
+fail_on_invalid_bbox: true
+ignored_regions:
+  preserve: true
+  remove_detections_inside: false
+  evaluation_policy: filter_predictions_at_50_percent_overlap
+  overlap_threshold: 0.5

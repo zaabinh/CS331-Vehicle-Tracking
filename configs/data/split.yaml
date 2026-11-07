@@ -1,0 +1,5 @@
+seed: 42
+split_method: sequence
+train_ratio: 0.8
+val_ratio: 0.2
+preserve_official_test: true
