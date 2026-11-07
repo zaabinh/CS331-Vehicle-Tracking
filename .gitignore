@@ -1,0 +1,10 @@
+data/raw/
+data/raw_inventory.json
+data/canonical/
+data/processed/
+data/artifacts/
+*.tar
+*.tar.gz
+__pycache__/
+.pytest_cache/
+outputs
