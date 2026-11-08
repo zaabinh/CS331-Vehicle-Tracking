@@ -1,19 +1,22 @@
+from tqdm.auto import tqdm
+
 from .utils import copy_image
 
 
-def export_mot(annotations, images, sequences, output):
+def export_mot(annotations, images, sequences, output, copy_images=True):
     """Xuất GT MOT và toàn bộ frame liên tục cho tracking."""
-    for sequence, meta in sequences.items():
+    for sequence, meta in tqdm(sequences.items(), desc="Export MOT", unit="seq", dynamic_ncols=True):
         folder = output / sequence
-        (folder / "gt").mkdir(parents=True)
+        (folder / "gt").mkdir(parents=True, exist_ok=True)
         rows = annotations[annotations.sequence == sequence]
         with (folder / "gt/gt.txt").open("w") as stream:
             for r in rows.itertuples():
                 # -1 nghĩa là nguồn không có visibility dạng số; XML gốc vẫn ở canonical.
                 stream.write(f"{r.frame_id},{r.track_id},{r.x},{r.y},{r.w},{r.h},1,{r.class_id},-1\n")
         # MOT cần mọi frame liên tục, kể cả frame không có object.
-        for frame, source in sorted(images[sequence].items()):
-            copy_image(source, folder / "img1" / f"{frame:06d}.jpg")
+        if copy_images:
+            for frame, source in sorted(images[sequence].items()):
+                copy_image(source, folder / "img1" / f"{frame:06d}.jpg")
         (folder / "seqinfo.ini").write_text(
             f"[Sequence]\nname={sequence}\nimDir=img1\nframeRate={meta['fps']}\n"
             f"seqLength={meta['num_frames']}\nimWidth={meta['width']}\nimHeight={meta['height']}\nimExt=.jpg\n")

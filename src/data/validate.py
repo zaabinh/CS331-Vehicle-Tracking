@@ -2,13 +2,14 @@ import logging
 import math
 import configparser
 from PIL import Image
+from tqdm.auto import tqdm
 from .split import validate_splits
 from .utils import clip_xywh, write_json
 
 LOGGER = logging.getLogger(__name__)
 
 
-def validate_canonical(annotations, images, sequences, classes):
+def validate_canonical(annotations, images, sequences, classes, check_images=True):
     """Kiểm tra ảnh, bbox, class và track trước khi dùng dataset."""
     errors, checked, out_of_frame = [], 0, 0
     total_sequences = len(sequences)
@@ -19,17 +20,12 @@ def validate_canonical(annotations, images, sequences, classes):
         total_images,
         len(annotations),
     )
-    for index, (sequence, meta) in enumerate(sequences.items(), start=1):
+    for sequence, meta in tqdm(sequences.items(), desc="Validate images", unit="seq", dynamic_ncols=True):
         sequence_images = images[sequence]
-        LOGGER.info(
-            "Validating images %s (%s/%s; %s files)",
-            sequence,
-            index,
-            total_sequences,
-            len(sequence_images),
-        )
         if set(sequence_images) != set(range(1, meta["num_frames"] + 1)):
             errors.append(f"{sequence}: missing/extra image frames")
+        if not check_images:
+            continue
         for frame, path in sequence_images.items():
             checked += 1
             try:
@@ -44,14 +40,7 @@ def validate_canonical(annotations, images, sequences, classes):
     if duplicates:
         errors.append(f"Duplicate frame/track pairs: {duplicates}")
     annotation_groups = list(annotations.groupby("sequence"))
-    for index, (sequence, rows) in enumerate(annotation_groups, start=1):
-        LOGGER.info(
-            "Validating annotations %s (%s/%s; %s objects)",
-            sequence,
-            index,
-            len(annotation_groups),
-            len(rows),
-        )
+    for sequence, rows in tqdm(annotation_groups, desc="Validate annotations", unit="seq", dynamic_ncols=True):
         m = sequences[sequence]
         intersects_image = ((rows.x < m["width"]) & (rows.y < m["height"])
                             & (rows.x + rows.w > 0) & (rows.y + rows.h > 0))
@@ -65,17 +54,18 @@ def validate_canonical(annotations, images, sequences, classes):
                               & (rows.x + rows.w <= m["width"])
                               & (rows.y + rows.h <= m["height"]))).sum())
     LOGGER.info(
-        "Canonical validation scan finished: %s images checked, %s errors",
+        "Canonical validation scan finished: %s images decoded%s, %s errors",
         checked,
+        "" if check_images else " (decode skipped; frame completeness still checked)",
         len(errors),
     )
     return dict(images_checked=checked, duplicate_tracks=duplicates,
                 out_of_frame_boxes=out_of_frame, errors=errors)
 
 
-def validate_exports(output, annotations, images, sequences, splits, config, classes):
+def validate_exports(output, annotations, images, sequences, splits, config, classes, check_images=True):
     """Đối chiếu file export với canonical và ghi validation report."""
-    report = validate_canonical(annotations, images, sequences, classes)
+    report = validate_canonical(annotations, images, sequences, classes, check_images)
     errors = report["errors"]
     try:
         validate_splits(splits)
@@ -95,7 +85,7 @@ def validate_exports(output, annotations, images, sequences, splits, config, cla
         ]
         if paths != expected:
             errors.append(f"Detection frame manifest mismatch: {part}")
-        for relative in paths:
+        for relative in tqdm(paths, desc=f"Validate YOLO {part}", unit="img", dynamic_ncols=True):
             image = output / "detection" / relative
             label = output / "detection/labels" / image.parent.name / (image.stem + ".txt")
             if not image.is_file() or not label.is_file():
@@ -124,7 +114,7 @@ def validate_exports(output, annotations, images, sequences, splits, config, cla
                             abs(v - ref) > 1e-4
                             for v, ref in zip(decoded, expected_box)):
                         errors.append(f"YOLO/canonical mismatch: {relative}/{r.track_id}")
-    for sequence, meta in sequences.items():
+    for sequence, meta in tqdm(sequences.items(), desc="Validate MOT", unit="seq", dynamic_ncols=True):
         folder = output / "tracking" / sequence
         ini = configparser.ConfigParser()
         ini.read(folder / 'seqinfo.ini')

@@ -1,14 +1,15 @@
 import yaml
+from tqdm.auto import tqdm
 
 from .utils import clip_xywh, copy_image, xywh_to_yolo
 
 
-def export_yolo(annotations, images, sequences, splits, config, classes, output):
+def export_yolo(annotations, images, sequences, splits, config, classes, output, copy_images=True):
     """Chép ảnh đã sampling và xuất nhãn YOLO đã chuẩn hóa."""
     output.mkdir(parents=True, exist_ok=True)
     for part, names in splits.items():
         lines = []
-        for sequence in names:
+        for sequence in tqdm(names, desc=f"Export YOLO {part}", unit="seq", dynamic_ncols=True):
             meta = sequences[sequence]
             # Gom object theo frame để mỗi ảnh chỉ cần một lần tra annotation.
             grouped = {int(f): g for f, g in annotations[annotations.sequence == sequence].groupby("frame_id")}
@@ -19,7 +20,8 @@ def export_yolo(annotations, images, sequences, splits, config, classes, output)
                 if frame not in sampled_frames:
                     continue
                 relative = f"{sequence}/img{frame:05d}"
-                copy_image(images[sequence][frame], output / "images" / f"{relative}.jpg")
+                if copy_images:
+                    copy_image(images[sequence][frame], output / "images" / f"{relative}.jpg")
                 label = output / "labels" / f"{relative}.txt"
                 label.parent.mkdir(parents=True, exist_ok=True)
                 rows = grouped.get(frame)

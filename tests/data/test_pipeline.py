@@ -51,18 +51,46 @@ class PipelineTests(unittest.TestCase):
                     target = (
                         '<target id="7"><box left="10" top="20" width="50" '
                         'height="40"/><attribute vehicle_type="car" '
-                        'truncation_ratio="0.1" orientation="90"/><occlusion>'
+                        'truncation_ratio="0.1" orientation="90" speed="2.5" '
+                        'trajectory_length="5"/><occlusion>'
                         '<region_overlap left="10" top="20" width="5" '
                         'height="5" occlusion_id="5" '
                         'occlusion_status="1"/></occlusion></target>'
                     )
-                frames.append(f'<frame num="{frame}"><target_list>{target}</target_list></frame>')
+                frames.append(f'<frame num="{frame}" density="1"><target_list>{target}</target_list></frame>')
             annotation = self.raw / ('DETRAC-Test-Annotations-XML' if sequence in self.official['test'] else 'DETRAC-Train-Annotations-XML')
             annotation.mkdir(exist_ok=True)
-            (annotation / f'{sequence}.xml').write_text(f'<sequence name="{sequence}"><sequence_attribute weather="sunny"/><ignored_region><box left="0" top="0" width="10" height="10"/></ignored_region>{"".join(frames)}</sequence>')
+            (annotation / f'{sequence}.xml').write_text(f'<sequence name="{sequence}"><sequence_attribute camera_state="stable" sence_weather="sunny"/><ignored_region><box left="0" top="0" width="10" height="10"/></ignored_region>{"".join(frames)}</sequence>')
 
     def run_pipeline(self):
         prepare(self.raw, self.out, self.split_dir, self.config)
+
+    def test_labels_only_rebuilds_annotations_without_raw_images(self):
+        self.run_pipeline()
+        inventory = (self.out / 'metadata/raw_inventory.json').read_text()
+        sequence = self.splits['val'][0]
+        image = self.out / 'tracking' / sequence / 'img1/000001.jpg'
+        mtime = image.stat().st_mtime_ns
+        shutil.rmtree(self.raw / 'DETRAC-Images')
+        xml = self.raw / 'DETRAC-Train-Annotations-XML' / f'{sequence}.xml'
+        xml.write_text(xml.read_text().replace('left="10" top="20" width="50"', 'left="11" top="20" width="50"'))
+        prepare(self.raw, self.out, self.split_dir, self.config, labels_only=True)
+        self.assertEqual(json.loads((self.out / 'metadata/validation_report.json').read_text())['status'], 'PASSED')
+        self.assertEqual((self.out / 'metadata/raw_inventory.json').read_text(), inventory)
+        self.assertNotIn('xml_path', pd.read_csv(self.out / 'metadata/sequences.csv').columns)
+        gt = (self.out / 'tracking' / sequence / 'gt/gt.txt').read_text().splitlines()[0]
+        self.assertTrue(gt.startswith('1,7,11.0,20.0,'))
+        self.assertEqual(image.stat().st_mtime_ns, mtime)
+        # Mất cả metadata: suy split từ tracking/, inventory lấy từ thư mục cha nếu có.
+        shutil.rmtree(self.out / 'metadata')
+        (self.root / 'raw_inventory.json').write_text(inventory)
+        prepare(self.raw, self.out, self.split_dir, self.config, labels_only=True)
+        manifest = json.loads((self.out / 'metadata/manifest.json').read_text())
+        self.assertEqual(manifest['scope'], 'full')
+        self.assertEqual(manifest['splits'], self.splits)
+        self.assertEqual((self.out / 'metadata/raw_inventory.json').read_text(), inventory)
+        with self.assertRaises(FileNotFoundError):
+            prepare(self.raw, self.root / 'missing', self.split_dir, self.config, labels_only=True)
 
     def test_bbox_roundtrip(self):
         xc, yc, w, h = xywh_to_yolo(10, 20, 50, 40, 960, 540)
@@ -85,6 +113,14 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn('annotated_frame_ids', pd.read_csv(
             self.out / 'metadata/sequences.csv'
         ).columns)
+        sequence_metadata = pd.read_csv(
+            self.out / 'metadata/sequences.csv'
+        ).set_index('sequence')
+        self.assertEqual(sequence_metadata.loc[sequence, 'sence_weather'], 'sunny')
+        self.assertEqual(sequence_metadata.loc[sequence, 'camera_state'], 'stable')
+        self.assertNotIn('weather', sequence_metadata.columns)
+        frame_metadata = pd.read_csv(self.out / 'metadata/annotated_frames.csv')
+        self.assertEqual(frame_metadata.iloc[0].density, 1)
         self.assertEqual((self.out / 'detection/labels' / sequence / 'img00002.txt').read_text(), '')
         self.assertEqual(len(list((self.out / 'tracking' / sequence / 'img1').glob('*.jpg'))), 6)
         first_gt = (self.out / 'tracking' / sequence / 'gt/gt.txt').read_text().splitlines()[0]
@@ -92,6 +128,8 @@ class PipelineTests(unittest.TestCase):
         df = pd.read_csv(self.out / 'canonical/annotations.csv')
         self.assertTrue(df.occlusion.isna().all())
         self.assertTrue(df.occlusion_ratio.isna().all())
+        self.assertTrue((df.speed == 2.5).all())
+        self.assertTrue((df.trajectory_length == 5).all())
         self.assertTrue(df.occlusion_xml.str.contains('region_overlap').all())
         self.assertEqual(
             df.loc[df.sequence == sequence, 'occlusion_region_count'].sum(), 5
@@ -102,6 +140,10 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(overlaps.iloc[0].occlusion_id, 5)
         self.assertEqual(overlaps.iloc[0].occlusion_status, 1)
         self.assertEqual(overlaps.iloc[0].width, 5)
+        track = pd.read_csv(self.out / 'metadata/track_lengths.csv')
+        track = track[(track.sequence == sequence) & (track.track_id == 7)].iloc[0]
+        self.assertEqual(track.annotated_frame_count, 5)
+        self.assertEqual(track.trajectory_length_xml_min, 5)
         detection = self.out / 'detection'
         val_before = (detection / 'val.txt').read_bytes()
         small = create_subset(detection, 2, 42)
@@ -155,7 +197,7 @@ class PipelineTests(unittest.TestCase):
         path = next(self.raw.rglob('*.xml'))
         text = path.read_text()
         text = text.replace(
-            '<frame num="2"><target_list></target_list></frame>', ''
+            '<frame num="2" density="1"><target_list></target_list></frame>', ''
         )
         path.write_text(text)
         annotations, _, meta = parse_detrac(path, num_frames=6)
@@ -215,7 +257,7 @@ class PipelineTests(unittest.TestCase):
         path = next(p for p in (self.out / 'detection/labels').rglob('*.txt') if p.read_text())
         path.write_text('0 0.5 0.5 0.1 0.1\n')
         with self.assertRaises(ValueError):
-            package(self.out, self.root / 'artifacts')
+            package(self.out, self.root / 'artifacts', revalidate=True)
         self.assertEqual(json.loads((self.out / 'metadata/validation_report.json').read_text())['status'], 'FAILED')
 
     def test_smoke_skips_missing_sequence_without_changing_fixed_split(self):

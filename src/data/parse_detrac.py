@@ -26,7 +26,8 @@ import pandas as pd
 """
 ANNOTATION_COLUMNS = [
     "sequence", "frame_id", "track_id", "class_name", "x", "y", "w", "h",
-    "occlusion", "occlusion_ratio", "truncation", "orientation", "occlusion_xml",
+    "occlusion", "occlusion_ratio", "truncation", "orientation", "speed",
+    "trajectory_length", "occlusion_xml",
     "occlusion_region_count", "occlusion_regions_json", "attributes_json",
 ]
 
@@ -38,8 +39,11 @@ def parse_detrac(xml_path, num_frames=None):
     if sequence != Path(xml_path).stem:
         raise ValueError(f"Sequence/file mismatch: {xml_path}")
     rows, frames, regions = [], [], []
-    weather = root.find("sequence_attribute")
-    weather = weather.attrib.get("weather", "") if weather is not None else ""
+    sequence_attribute = root.find("sequence_attribute")
+    sequence_attributes = (
+        dict(sequence_attribute.attrib) if sequence_attribute is not None else {}
+    )
+    frame_attributes = []
     # Vùng ignore không gắn với một object cụ thể nên lưu riêng.
     for box in root.findall("./ignored_region/box"):
         regions.append(dict(sequence=sequence, **{
@@ -47,6 +51,14 @@ def parse_detrac(xml_path, num_frames=None):
     for frame in root.findall("frame"):
         frame_id = int(frame.attrib["num"])
         frames.append(frame_id)
+        frame_attributes.append(
+            {
+                "sequence": sequence,
+                "frame_id": frame_id,
+                "density": frame.attrib.get("density", ""),
+                "attributes_json": json.dumps(frame.attrib, sort_keys=True),
+            }
+        )
         for target in frame.findall("./target_list/target"):
             box = target.find("box")
             attr = target.find("attribute")
@@ -112,6 +124,11 @@ def parse_detrac(xml_path, num_frames=None):
                         if "truncation_ratio" in attrs else None
                     ),
                     orientation=attrs.get("orientation", ""),
+                    speed=(float(attrs["speed"]) if "speed" in attrs else None),
+                    trajectory_length=(
+                        int(attrs["trajectory_length"])
+                        if "trajectory_length" in attrs else None
+                    ),
                     occlusion_xml=(
                         ET.tostring(occ, encoding="unicode") if occ is not None else ""
                     ),
@@ -133,7 +150,10 @@ def parse_detrac(xml_path, num_frames=None):
         annotated_frame_ids=sorted(frames),
         unannotated_frames=timeline_length - len(frames),
         annotation_coverage=len(frames) / timeline_length,
-        weather=weather, xml_path=str(xml_path))
+        sence_weather=sequence_attributes.get("sence_weather", ""),
+        camera_state=sequence_attributes.get("camera_state", ""),
+        sequence_attributes_json=json.dumps(sequence_attributes, sort_keys=True),
+        frame_attributes=frame_attributes)
 
 
 def inspect_raw(raw, expected_sequences):
