@@ -1,0 +1,15 @@
+flowchart TD
+    A[UA-DETRAC: chuỗi khung hình] --> B[YOLO26: Detection]
+    B --> C[Chuẩn hóa và lưu Canonical Detections]
+    C --> D1[UCMCTrack Adapter]
+    C --> D2[OC-SORT Adapter]
+    C --> D3[DeepSORT Adapter]
+    P[Thông số camera theo sequence] --> D1
+    F[Ảnh gốc hoặc Re-ID embeddings] --> D3
+    D1 --> T1[UCMCTrack]
+    D2 --> T2[OC-SORT]
+    D3 --> T3[DeepSORT]
+    T1 --> E[Chuẩn hóa track output]
+    T2 --> E
+    T3 --> E
+    E --> M[Đánh giá MOT trên cùng protocol]

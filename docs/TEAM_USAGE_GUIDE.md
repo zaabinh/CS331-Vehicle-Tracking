@@ -99,6 +99,15 @@ class mapping, thống kê, `annotated_frames.csv` và `unannotated_frames.csv` 
 đánh giá. `annotated_frames.csv` giữ cả frame XML khai báo nhưng không có object;
 `unannotated_frames.csv` liệt kê frame ảnh không có entry XML.
 
+`metadata/sequences.csv` lưu đúng key nguồn `sence_weather` và `camera_state`,
+cùng `sequence_attributes_json` để không mất thuộc tính sequence chưa chuẩn hóa.
+`metadata/annotated_frames.csv` giữ `density` và toàn bộ frame attributes.
+`canonical/annotations.csv` có `speed` và `trajectory_length` theo từng target
+frame. Trong `metadata/track_lengths.csv`, `annotated_frame_count` là số record
+target thực tế đếm từ canonical; các cột `trajectory_length_xml_min/max` giữ
+giá trị được khai báo trong XML để so sánh. `speed` thay đổi theo frame nên
+canonical lưu từng giá trị; bảng track chỉ tổng hợp min/max để tiện xem nhanh.
+
 `data.yaml` lưu đường dẫn tuyệt đối tại máy đã build artifact. Sau khi giải nén
 ở vị trí mới, chạy rebase để cập nhật đường dẫn trong YAML gốc và các YAML
 subset:
