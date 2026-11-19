@@ -7,7 +7,13 @@ from pathlib import Path
 class NotebookTests(unittest.TestCase):
     def test_notebook_cells_parse_with_saved_outputs(self):
         folder = Path(__file__).resolve().parents[2] / 'notebooks/data'
-        for name in ['00b_run_pipeline.ipynb', '01_dataset_analysis.ipynb', '02_split_analysis.ipynb', '03_visual_validation.ipynb']:
+        for name in [
+            '00b_run_pipeline.ipynb',
+            '01_dataset_analysis.ipynb',
+            '02_split_analysis.ipynb',
+            '03_visual_validation.ipynb',
+            '04_data_and_model_analysis.ipynb',
+        ]:
             nb = json.loads((folder / name).read_text(encoding='utf-8'))
             self.assertEqual(nb['nbformat'], 4)
             for i, cell in enumerate(nb['cells']):

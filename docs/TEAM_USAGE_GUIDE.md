@@ -33,7 +33,10 @@ Mở lần lượt các notebook trong `notebooks/data`:
 4. `03_visual_validation.ipynb`: xem các trang ảnh đã gán nhãn và các frame bị
    thiếu annotation. Sau khi review xong mới đặt
    `VISUAL_REVIEW_PASSED = True` và chạy cell cuối.
-5. Quay lại `00b_run_pipeline.ipynb`, chạy full pipeline, tạo subset Detection
+5. `04_data_and_model_analysis.ipynb`: tạo biểu đồ phân tích class, mật độ,
+   bbox, coverage, track, speed, điều kiện cảnh quay và annotation. Các biểu đồ
+   model được vẽ khi cung cấp CSV metric theo schema trong notebook.
+6. Quay lại `00b_run_pipeline.ipynb`, chạy full pipeline, tạo subset Detection
    và package artifact.
 
 Notebook tìm project từ thư mục hiện tại hoặc thư mục cha. Có thể override
