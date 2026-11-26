@@ -7,4 +7,6 @@ data/artifacts/
 *.tar.gz
 __pycache__/
 .pytest_cache/
+.venv-tracking/
 outputs
+UCMC/*.pdf

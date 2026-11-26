@@ -1,0 +1,13 @@
+conf: 0.05
+high_score: 0.6
+a1: 40.0
+a2: 40.0
+wx: 10.0
+wy: 10.0
+vmax: 15.0
+max_age: 30
+fps: 25
+hp: true
+interpolation: false
+cmc: true
+preview_frames: 0

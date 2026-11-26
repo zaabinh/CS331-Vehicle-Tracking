@@ -1,0 +1,63 @@
+diff --git a/eval/TrackEval/trackeval/metrics/clear.py b/eval/TrackEval/trackeval/metrics/clear.py
+index 8b5e291..30b8acc 100644
+--- a/eval/TrackEval/trackeval/metrics/clear.py
++++ b/eval/TrackEval/trackeval/metrics/clear.py
+@@ -69,10 +69,12 @@ class CLEAR(_BaseMetric):
+             # Deal with the case that there are no gt_det/tracker_det in a timestep.
+             if len(gt_ids_t) == 0:
+                 res['CLR_FP'] += len(tracker_ids_t)
++                prev_timestep_tracker_id[:] = np.nan
+                 continue
+             if len(tracker_ids_t) == 0:
+                 res['CLR_FN'] += len(gt_ids_t)
+                 gt_id_count[gt_ids_t] += 1
++                prev_timestep_tracker_id[:] = np.nan
+                 continue
+ 
+             # Calc score matrix to first minimise IDSWs from previous frame, and then maximise MOTP secondarily
+diff --git a/eval/TrackEval/trackeval/metrics/hota.py b/eval/TrackEval/trackeval/metrics/hota.py
+index 753f81f..88a7e8e 100644
+--- a/eval/TrackEval/trackeval/metrics/hota.py
++++ b/eval/TrackEval/trackeval/metrics/hota.py
+@@ -28,19 +28,19 @@ class HOTA(_BaseMetric):
+         # Initialise results
+         res = {}
+         for field in self.float_array_fields + self.integer_array_fields:
+-            res[field] = np.zeros((len(self.array_labels)), dtype=np.float)
++            res[field] = np.zeros((len(self.array_labels)), dtype=float)
+         for field in self.float_fields:
+             res[field] = 0
+ 
+         # Return result quickly if tracker or gt sequence is empty
+         if data['num_tracker_dets'] == 0:
+-            res['HOTA_FN'] = data['num_gt_dets'] * np.ones((len(self.array_labels)), dtype=np.float)
+-            res['LocA'] = np.ones((len(self.array_labels)), dtype=np.float)
++            res['HOTA_FN'] = data['num_gt_dets'] * np.ones((len(self.array_labels)), dtype=float)
++            res['LocA'] = np.ones((len(self.array_labels)), dtype=float)
+             res['LocA(0)'] = 1.0
+             return res
+         if data['num_gt_dets'] == 0:
+-            res['HOTA_FP'] = data['num_tracker_dets'] * np.ones((len(self.array_labels)), dtype=np.float)
+-            res['LocA'] = np.ones((len(self.array_labels)), dtype=np.float)
++            res['HOTA_FP'] = data['num_tracker_dets'] * np.ones((len(self.array_labels)), dtype=float)
++            res['LocA'] = np.ones((len(self.array_labels)), dtype=float)
+             res['LocA(0)'] = 1.0
+             return res
+ 
+diff --git a/eval/TrackEval/trackeval/metrics/identity.py b/eval/TrackEval/trackeval/metrics/identity.py
+index c8c6c80..7fc23cf 100644
+--- a/eval/TrackEval/trackeval/metrics/identity.py
++++ b/eval/TrackEval/trackeval/metrics/identity.py
+@@ -80,9 +80,9 @@ class Identity(_BaseMetric):
+         match_rows, match_cols = linear_sum_assignment(fn_mat + fp_mat)
+ 
+         # Accumulate basic statistics
+-        res['IDFN'] = fn_mat[match_rows, match_cols].sum().astype(np.int)
+-        res['IDFP'] = fp_mat[match_rows, match_cols].sum().astype(np.int)
+-        res['IDTP'] = (gt_id_count.sum() - res['IDFN']).astype(np.int)
++        res['IDFN'] = fn_mat[match_rows, match_cols].sum().astype(int)
++        res['IDFP'] = fp_mat[match_rows, match_cols].sum().astype(int)
++        res['IDTP'] = (gt_id_count.sum() - res['IDFN']).astype(int)
+ 
+         # Calculate final ID scores
+         res = self._compute_final_fields(res)

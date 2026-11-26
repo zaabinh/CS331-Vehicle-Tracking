@@ -1,0 +1,2 @@
+# Preserve patch bytes; blank diff context lines intentionally contain a space.
+patches/*.patch -text -whitespace

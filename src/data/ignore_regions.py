@@ -21,7 +21,8 @@ def filter_ignored_boxes(boxes, regions, width, height, threshold=0.5):
             mask[top:bottom, left:right] = 1
 
     # Integral image tính giao box-ignore nhanh mà không đếm vùng chồng lặp.
-    integral = np.pad(mask.cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+    # Signed sums avoid unsigned underflow in inclusion-exclusion subtraction.
+    integral = np.pad(mask.cumsum(0, dtype=np.int64).cumsum(1), ((1, 0), (1, 0)))
     kept = []
     for box in boxes:
         x, y, box_width, box_height = box[:4]

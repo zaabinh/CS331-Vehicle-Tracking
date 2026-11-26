@@ -1,0 +1,12 @@
+conf: 0.10
+high_score: 0.60
+a1: 10
+a2: 10
+wx: 0.1
+wy: 0.1
+vmax: 0.5
+max_age: 30
+fps: 25
+hp: false
+interpolation: false
+cmc: false

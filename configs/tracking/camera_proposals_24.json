@@ -1,0 +1,634 @@
+{
+  "batch_id": "manual_road_planes_24_v1",
+  "status": "needs_review",
+  "scope": "24 visually selected representative views; not an official UA-DETRAC camera/location mapping",
+  "width_source": "3.5 m analyst-specified lane-width prior; no on-site measurement or local standard verified",
+  "length_source": "Individually initialized trial prior in metres; no surveyed endpoints or confirmed paint spacing",
+  "corner_source": "Manually selected from inspected original 960x540 reference images by assistant",
+  "views": [
+    {
+      "view_id": "view_01",
+      "reference_sequence": "MVI_20012",
+      "source_frame": 1,
+      "image_points": [
+        [
+          405,
+          500
+        ],
+        [
+          765,
+          500
+        ],
+        [
+          635,
+          220
+        ],
+        [
+          470,
+          220
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 12,
+      "notes": "Bus corridor; inferred dashed lane boundaries. Unstable camera: inspect all reference frames."
+    },
+    {
+      "view_id": "view_02",
+      "reference_sequence": "MVI_39031",
+      "source_frame": 1,
+      "image_points": [
+        [
+          394,
+          500
+        ],
+        [
+          646,
+          500
+        ],
+        [
+          496,
+          200
+        ],
+        [
+          398,
+          200
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 20,
+      "notes": "Tree-lined road; inner lane beside median. Tree shadows weaken boundary visibility."
+    },
+    {
+      "view_id": "view_03",
+      "reference_sequence": "MVI_39271",
+      "source_frame": 1,
+      "image_points": [
+        [
+          180,
+          415
+        ],
+        [
+          180,
+          356
+        ],
+        [
+          650,
+          255
+        ],
+        [
+          650,
+          301
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 18,
+      "notes": "Oblique road beside flower bed; transverse corners are inferred, not painted survey marks."
+    },
+    {
+      "view_id": "view_04",
+      "reference_sequence": "MVI_39311",
+      "source_frame": 1,
+      "image_points": [
+        [
+          465,
+          500
+        ],
+        [
+          625,
+          500
+        ],
+        [
+          589,
+          330
+        ],
+        [
+          480,
+          330
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 12,
+      "notes": "Approach beside traffic island. Gentle curvature limits the planar rectangle approximation."
+    },
+    {
+      "view_id": "view_05",
+      "reference_sequence": "MVI_39361",
+      "source_frame": 1,
+      "image_points": [
+        [
+          500,
+          180
+        ],
+        [
+          625,
+          180
+        ],
+        [
+          587,
+          112
+        ],
+        [
+          508,
+          112
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 9,
+      "notes": "Straight approach beyond zebra crossing. Small far-field patch: high sensitivity to point placement."
+    },
+    {
+      "view_id": "view_06",
+      "reference_sequence": "MVI_39371",
+      "source_frame": 1,
+      "image_points": [
+        [
+          180,
+          481
+        ],
+        [
+          180,
+          431
+        ],
+        [
+          760,
+          324
+        ],
+        [
+          760,
+          358
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 24,
+      "notes": "Oblique apartment-front carriageway; inferred transverse alignment needs review."
+    },
+    {
+      "view_id": "view_07",
+      "reference_sequence": "MVI_39401",
+      "source_frame": 1,
+      "image_points": [
+        [
+          530,
+          420
+        ],
+        [
+          692,
+          420
+        ],
+        [
+          640,
+          230
+        ],
+        [
+          522,
+          230
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 12,
+      "notes": "Straight approach lane. Corners avoid the foreground van; some lane boundaries are inferred."
+    },
+    {
+      "view_id": "view_08",
+      "reference_sequence": "MVI_39771",
+      "source_frame": 1,
+      "image_points": [
+        [
+          325,
+          500
+        ],
+        [
+          492,
+          500
+        ],
+        [
+          507,
+          210
+        ],
+        [
+          421,
+          210
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 18,
+      "notes": "Dusk avenue, inner approach lane. Blur and glare reduce marking precision."
+    },
+    {
+      "view_id": "view_09",
+      "reference_sequence": "MVI_39811",
+      "source_frame": 1,
+      "image_points": [
+        [
+          800,
+          438
+        ],
+        [
+          800,
+          326
+        ],
+        [
+          350,
+          206
+        ],
+        [
+          350,
+          261
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 18,
+      "notes": "Oblique avenue; local lane next to central fence. The entire image does not share one exact road plane."
+    },
+    {
+      "view_id": "view_10",
+      "reference_sequence": "MVI_39931",
+      "source_frame": 1,
+      "image_points": [
+        [
+          500,
+          300
+        ],
+        [
+          600,
+          240
+        ],
+        [
+          355,
+          174
+        ],
+        [
+          310,
+          248
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 9,
+      "notes": "Short oblique lane patch chosen to avoid the foreground SUV. Transverse alignment is inferred."
+    },
+    {
+      "view_id": "view_11",
+      "reference_sequence": "MVI_40152",
+      "source_frame": 1,
+      "image_points": [
+        [
+          450,
+          500
+        ],
+        [
+          665,
+          500
+        ],
+        [
+          804,
+          300
+        ],
+        [
+          690,
+          300
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 12,
+      "notes": "Foreground through lane. Corner positions avoid the near black vehicle and central pole; pole still occludes the patch interior."
+    },
+    {
+      "view_id": "view_12",
+      "reference_sequence": "MVI_40161",
+      "source_frame": 1,
+      "image_points": [
+        [
+          720,
+          458
+        ],
+        [
+          800,
+          367
+        ],
+        [
+          360,
+          179
+        ],
+        [
+          315,
+          232
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 15,
+      "notes": "Foreground lane beside bus-stop median. Inferred transverse alignment."
+    },
+    {
+      "view_id": "view_13",
+      "reference_sequence": "MVI_40171",
+      "source_frame": 1,
+      "image_points": [
+        [
+          360,
+          458
+        ],
+        [
+          360,
+          322
+        ],
+        [
+          780,
+          209
+        ],
+        [
+          780,
+          295
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 12,
+      "notes": "Close oblique bus-stop view. Corners avoid foreground cars; transverse direction remains approximate."
+    },
+    {
+      "view_id": "view_14",
+      "reference_sequence": "MVI_40191",
+      "source_frame": 1,
+      "image_points": [
+        [
+          300,
+          500
+        ],
+        [
+          455,
+          500
+        ],
+        [
+          488,
+          200
+        ],
+        [
+          425,
+          200
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 18,
+      "notes": "Recessed expressway, left inner lane. Possible grade change outside the selected patch."
+    },
+    {
+      "view_id": "view_15",
+      "reference_sequence": "MVI_40201",
+      "source_frame": 1,
+      "image_points": [
+        [
+          640,
+          410
+        ],
+        [
+          750,
+          320
+        ],
+        [
+          355,
+          165
+        ],
+        [
+          290,
+          216
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 15,
+      "notes": "Oblique expressway foreground lane. Camera crop differs from frontal expressway views."
+    },
+    {
+      "view_id": "view_16",
+      "reference_sequence": "MVI_40211",
+      "source_frame": 1,
+      "image_points": [
+        [
+          130,
+          490
+        ],
+        [
+          130,
+          361
+        ],
+        [
+          760,
+          267
+        ],
+        [
+          760,
+          378
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 18,
+      "notes": "Sideways expressway, nearest lane. Approximate cross-road direction."
+    },
+    {
+      "view_id": "view_17",
+      "reference_sequence": "MVI_40711",
+      "source_frame": 1,
+      "image_points": [
+        [
+          466,
+          510
+        ],
+        [
+          640,
+          510
+        ],
+        [
+          543,
+          260
+        ],
+        [
+          463,
+          260
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 15,
+      "notes": "Wide urban approach beside median island. Do not extend across a turning curve."
+    },
+    {
+      "view_id": "view_18",
+      "reference_sequence": "MVI_40732",
+      "source_frame": 1,
+      "image_points": [
+        [
+          485,
+          535
+        ],
+        [
+          485,
+          469
+        ],
+        [
+          885,
+          343
+        ],
+        [
+          885,
+          394
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 18,
+      "notes": "Oblique bus-stop intersection. Short visible transverse baseline; high uncertainty."
+    },
+    {
+      "view_id": "view_19",
+      "reference_sequence": "MVI_40752",
+      "source_frame": 1,
+      "image_points": [
+        [
+          160,
+          513
+        ],
+        [
+          120,
+          410
+        ],
+        [
+          470,
+          282
+        ],
+        [
+          500,
+          357
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 14,
+      "notes": "Recessed bus corridor beside planted median. Shortened patch avoids corners on the bus; slope and inferred alignment need review."
+    },
+    {
+      "view_id": "view_20",
+      "reference_sequence": "MVI_40771",
+      "source_frame": 1,
+      "image_points": [
+        [
+          375,
+          500
+        ],
+        [
+          615,
+          500
+        ],
+        [
+          528,
+          190
+        ],
+        [
+          437,
+          190
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 15,
+      "notes": "Night approach, lane next to island. Headlights and blur limit point precision."
+    },
+    {
+      "view_id": "view_21",
+      "reference_sequence": "MVI_40851",
+      "source_frame": 1,
+      "image_points": [
+        [
+          360,
+          520
+        ],
+        [
+          495,
+          520
+        ],
+        [
+          483,
+          370
+        ],
+        [
+          363,
+          370
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 6,
+      "notes": "Local straight segment of turning approach. Do not fit the curved intersection path as a straight lane."
+    },
+    {
+      "view_id": "view_22",
+      "reference_sequence": "MVI_40891",
+      "source_frame": 1,
+      "image_points": [
+        [
+          100,
+          285
+        ],
+        [
+          100,
+          220
+        ],
+        [
+          500,
+          168
+        ],
+        [
+          500,
+          220
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 18,
+      "notes": "Rainy oblique junction. Unmarked wet pavement patch: transverse direction and length are highly uncertain."
+    },
+    {
+      "view_id": "view_23",
+      "reference_sequence": "MVI_40991",
+      "source_frame": 1,
+      "image_points": [
+        [
+          850,
+          470
+        ],
+        [
+          875,
+          390
+        ],
+        [
+          680,
+          333
+        ],
+        [
+          660,
+          405
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 6,
+      "notes": "Short visible night-road patch right of the pillar and beyond the near vehicle. Limited baseline makes the scale prior uncertain."
+    },
+    {
+      "view_id": "view_24",
+      "reference_sequence": "MVI_63521",
+      "source_frame": 1,
+      "image_points": [
+        [
+          250,
+          500
+        ],
+        [
+          480,
+          500
+        ],
+        [
+          498,
+          220
+        ],
+        [
+          367,
+          220
+        ]
+      ],
+      "width_m": 3.5,
+      "length_m": 15,
+      "notes": "Rainy avenue, inner approach lane beside median. Wet paint and reflections reduce precision."
+    }
+  ]
+}
