@@ -7,12 +7,24 @@ from pathlib import Path
 
 import pandas as pd
 
-from scripts.export_tracking_bundle import export_bundle
+from scripts.export_tracking_bundle import camera_review_note, export_bundle
 from src.tracking.common import sha256_file
 from src.tracking.evaluation import GT_COLUMNS, PRED_COLUMNS, evaluate_run
 
 
 class BundleTests(unittest.TestCase):
+    def test_camera_note_uses_exported_provenance(self):
+        cameras = {f"S{i}": {"status": "reviewed"} for i in range(40)}
+        manifest = dict(provenance=dict(cameras=cameras, calibration_reviewed=True))
+        note = camera_review_note(manifest)
+        self.assertIn("40/40", note)
+        self.assertIn("passed", note)
+        for i in range(30):
+            cameras[f"S{i}"]["status"] = "draft"
+        manifest["provenance"]["calibration_reviewed"] = False
+        self.assertIn("30/40", camera_review_note(manifest))
+        self.assertIn("not recorded", camera_review_note({}))
+
     def test_export_compacts_only_unannotated_frames_and_preserves_sources(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

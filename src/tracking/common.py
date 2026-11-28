@@ -3,6 +3,7 @@
 import hashlib
 import json
 import platform
+from concurrent.futures import ThreadPoolExecutor
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -61,6 +62,14 @@ def sha256_file(path):
 def fingerprint(value):
     """Hash JSON-compatible settings deterministically."""
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def image_fingerprint(images):
+    """Read image bytes concurrently while preserving the original hash order."""
+    paths = [images[frame] for frame in sorted(images)]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        hashes = list(pool.map(sha256_file, paths))
+    return fingerprint(hashes)
 
 
 def write_json(path, value):

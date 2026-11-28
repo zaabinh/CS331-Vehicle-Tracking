@@ -19,6 +19,7 @@ from .common import (
     find_sequence_images,
     environment_versions,
     fingerprint,
+    image_fingerprint,
     read_sequences,
     resolve_config,
     sha256_file,
@@ -221,12 +222,7 @@ def run_tracking(
         from .gmc import load_or_estimate_gmc
 
         provenance["images"] = {
-            s: fingerprint(
-                [
-                    sha256_file(p)
-                    for _, p in sorted(find_sequence_images(dataset, s).items())
-                ]
-            )
+            s: image_fingerprint(find_sequence_images(dataset, s))
             for s in selected
         }
     if fix_coasting:

@@ -64,7 +64,22 @@ Gói archive giữ nguyên cấu trúc thư mục để xem đầy đủ các b�
 `delivery_v3/notebook_preservation.json`. Bản notebook publish chỉ xóa output và
 execution count/widget state; source/Markdown của các cell giữ nguyên.
 
-Các hạng mục của kế hoạch camera ban đầu **chưa được nghiệm thu đầy đủ**: chưa
-chạy đối chứng H so với KRT vì chưa có calibration KRT đã duyệt; chưa có review
-đủ 100 sequences; chưa kiểm tra frontend Colab thực trong đợt này. Những giới hạn
-này không được suy thành đã hoàn thành chỉ vì pipeline val/test đã xuất metric.
+Ở mốc v3 đầu tiên, chưa có review đủ 100 sequences. Người dùng sau đó đã review
+toàn bộ homography; kiểm tra ngày 28/11/2026 xác nhận đủ **100/100 reviewed
+records hợp lệ**, review hash và kích thước ảnh khớp, A/H và bốn góc nhất quán.
+Snapshot mới là `registry_reviewed_h100_7f16c297.json`, tách khỏi snapshot cũ.
+Xem [báo cáo cuối với homography mới](TRACKING_FINAL_REVIEWED_H100_REPORT.md) và
+[đối chứng CMC ở calibration cũ](TRACKING_CMC_V3_REPORT.md). Các con số 30 camera
+test draft phía trên mô tả mốc lịch sử, không phải trạng thái snapshot mới.
+
+Lượt reviewed mới đã hoàn tất ba nhánh trên 12 val và hai nhánh trên 40 test:
+V3 + CMC được chọn bằng val, test HOTA 73,1506 so với upstream 73,1033;
+IDF1/MOTA thấp hơn upstream và IDS tăng so với camera cũ. Báo cáo cuối giữ đủ
+các hồi quy này, phân nhóm difficulty hai hệ, ví dụ IDS và FN audit khớp 40/40
+sequence. Gói evaluator dùng chung khớp 210/210 phép đối chiếu; 59 source files
+không đổi trong đợt chạy và 33 regression tests phù hợp passed.
+
+Các hạng mục còn **chưa được nghiệm thu đầy đủ**: chưa chạy đối chứng H so với
+KRT vì chưa có calibration KRT đã duyệt; chưa kiểm tra frontend Colab thực trong
+đợt này. Review homography không tự chứng minh kích thước prior là số đo thực
+địa. Những giới hạn này không được suy thành hoàn thành chỉ vì có metric.

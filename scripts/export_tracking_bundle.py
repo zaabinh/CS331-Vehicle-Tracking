@@ -37,6 +37,22 @@ def copy_csv_subset(source, target, sequences, columns=None):
                     writer.writerow({key: row[key] for key in columns})
 
 
+def camera_review_note(manifest):
+    """Describe the exported run's actual review state instead of an old count."""
+    provenance = manifest.get("provenance", {})
+    cameras = provenance.get("cameras", {})
+    if not cameras:
+        return "Camera review metadata was not recorded; inspect run provenance. "
+    reviewed = sum(c.get("status") == "reviewed" for c in cameras.values())
+    total = len(cameras)
+    if reviewed == total and provenance.get("calibration_reviewed"):
+        return f"All {reviewed}/{total} test cameras passed reviewed preflight. "
+    return (
+        f"{total - reviewed}/{total} test camera records remain unreviewed, "
+        "or reviewed preflight was not enforced; camera quality is provisional. "
+    )
+
+
 def export_bundle(dataset, runs, output):
     """Keep original outputs and provide explicitly class-separated MOT inputs."""
     dataset, output = Path(dataset), Path(output)
@@ -196,8 +212,8 @@ def export_bundle(dataset, runs, output):
         "state-reset patch (docs/UCMC_LOCAL_PATCHES.md). All compared trackers "
         "must use the same evaluator/patch; unpatched CLEAR counts can differ.\n\n"
         "Test is a single val-selected offline configuration, without test tuning. "
-        "30 of 40 test camera calibrations remain unreviewed drafts; test metrics "
-        "are provisional with respect to camera quality. See the reports. "
+        + camera_review_note(manifests.get("test", {}))
+        + "See the reports. "
         "This is project protocol v2, not official UA-DETRAC PR-MOTA.\n",
         encoding="utf-8",
     )

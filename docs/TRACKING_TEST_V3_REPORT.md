@@ -1,5 +1,9 @@
 # Đánh giá UCMCTrack v3 trên test UA-DETRAC
 
+> Mốc này dùng v3 không CMC. Đối chứng CMC được ghi riêng trong
+> [TRACKING_CMC_V3_REPORT.md](TRACKING_CMC_V3_REPORT.md); không ghi đè số liệu
+> hoặc predictions lịch sử của lần test này.
+
 Ngày: 28/11/2026. Đã chạy và chấm đủ **40 test sequences**, 56.340 frame tracking,
 56.167 frame có annotation; không chạy lại detector hoặc tuning theo test.
 

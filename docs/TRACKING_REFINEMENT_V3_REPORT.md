@@ -1,5 +1,9 @@
 # Cải thiện tracking từ detection đã xuất: validation v3
 
+> Đối chứng chỉ bật thêm CMC và so sánh upstream được ghi riêng trong
+> [TRACKING_CMC_V3_REPORT.md](TRACKING_CMC_V3_REPORT.md). Các số liệu dưới đây
+> giữ nguyên mốc v3 không CMC.
+
 Ngày: 28/11/2026. Chạy local Windows, 12 val sequences, 16.001 frame tracking và
 15.274 frame có annotation được chấm. Không chạy lại YOLO, không sửa detector,
 canonical, split hoặc calibration val. Protocol vẫn là v2 của đồ án.

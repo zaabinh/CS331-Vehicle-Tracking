@@ -1,0 +1,17 @@
+# Controlled val ablation: best_val_v3.yaml with CMC enabled only.
+# Requires --fix-coasting. Do not choose parameters using test scores.
+a1: 40.0
+a2: 40.0
+boundary_sigma: 10.0
+class_mode: shared_vote
+cmc: true
+conf: 0.05
+fps: 25
+high_score: 0.6
+hp: true
+interpolation: false
+max_age: 30
+preview_frames: 0
+vmax: 15.0
+wx: 10.0
+wy: 10.0

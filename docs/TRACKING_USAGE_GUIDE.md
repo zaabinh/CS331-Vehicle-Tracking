@@ -1,8 +1,45 @@
 # Hướng dẫn sử dụng UCMCTrack cho UA-DETRAC
 
 Tài liệu dành cho thành viên Tracking và người phụ trách calibration camera.
-Pipeline dùng CSV detection đã xuất từ YOLO, chạy bốn tracker theo class, rồi
-đánh giá và tuning trên tập validation.
+Pipeline dùng CSV detection đã xuất từ YOLO, chạy tracker và đánh giá trên
+validation/test. Có chế độ bốn tracker theo class hoặc association chung kèm
+class voting offline, tùy cấu hình được chọn trên val.
+
+## Lượt cuối sau khi review đủ 100 homography
+
+Registry live `outputs/tracking/calibration/registry.json` đã có 100 homography
+reviewed. Lượt cuối dùng snapshot cố định, không dùng lại registry draft hoặc
+snapshot v1 trong các lệnh lịch sử bên dưới:
+
+```powershell
+python scripts/finalize_reviewed_tracking.py --calibration outputs/tracking/calibration/registry_reviewed_h100_7f16c297.json
+```
+
+Lệnh chạy ba đối chứng trên val với geometry mới, chọn cấu hình bằng val, khóa
+lựa chọn rồi chạy test. Output ở `outputs/tracking/final_reviewed_h100`;
+`val_selection.json` và `best_config.yaml` ghi cấu hình chọn, `completion.json`
+chỉ tới test run tương ứng sau khi toàn bộ pipeline hoàn tất. Không mặc định
+v3 hoặc CMC phải thắng upstream. Đọc
+[`TRACKING_FINAL_REVIEWED_H100_REPORT.md`](TRACKING_FINAL_REVIEWED_H100_REPORT.md).
+
+Các lệnh `run_tracking_test.py` và `compare_tracking_cmc.py` phía dưới phục vụ
+tái lập các mốc cũ, có snapshot calibration riêng; chúng không tự nhận review
+mới trong registry live. Muốn dùng một snapshot review mới hơn, đóng băng file
+đó và truyền `--calibration` cùng một `--output` mới cho lệnh final phía trên.
+
+Các artifact trong `outputs` không được đưa vào GitHub. Với máy mới, lấy gói
+`code` hoặc `analysis_and_cameras` tại
+[Drive của lượt cuối](https://drive.google.com/drive/folders/1_GFS4c8bxnWtCMJBxtj5RCmp5r4fcYZH),
+giải nén giữ nguyên đường dẫn tương đối trong repo. Script final cần snapshot
+`outputs/tracking/calibration/registry_reviewed_h100_7f16c297.json` và cấu hình
+số học gốc `outputs/tracking/cmc_v3/val_selection.json`. Dataset v1.1, ảnh và CSV
+detection vẫn là đầu vào riêng, không có trong các gói code/output này.
+Nếu chỉ chấm lại kết quả đã lưu, dùng gói `trackeval_selected_val_test`; không
+cần ảnh, chạy YOLO hay chạy tracker lại.
+
+`best_config.yaml` ghi `fix_coasting=True` trong comment để lưu bối cảnh;
+comment YAML không tự bật tùy chọn này. Script final truyền cờ đó riêng cho
+runner; khi tự gọi CLI tracking phải truyền `--fix-coasting` cho cấu hình V3.
 
 ## 1. Bắt đầu từ đâu?
 
@@ -17,13 +54,13 @@ Lệnh setup có thể chạy lại; nếu patch đã áp dụng thì không ghi
 patch, Git sẽ báo submodule có thay đổi so với upstream; đây là trạng thái
 dự kiến. Các thay đổi được lưu ở `patches/ucmc_compat.patch` trong repo chính.
 
-### Registry đã được duyệt cho đợt tuning hiện tại
+### Registry của đợt tuning cũ: chỉ để tái lập
 
-Sau khi chủ đồ án xác nhận đã duyệt ảnh, 30 đề xuất homography đã được ghi
+Ở đợt đầu, sau khi chủ đồ án xác nhận đã duyệt ảnh, 30 đề xuất homography đã được ghi
 nhận duyệt, gồm đủ 12 sequence val. Bản cố định cho thí nghiệm nằm tại
 `outputs/tracking/calibration/registry_approved_h_v1.json`; hồ sơ xác nhận và
-checksum nằm ở `approval_h_v1.json` cùng thư mục. Registry mặc định cũng đã
-được cập nhật sau khi sao lưu. Kích thước mặt đường vẫn là prior được ghi
+checksum nằm ở `approval_h_v1.json` cùng thư mục. Đây là snapshot lịch sử;
+lượt cuối dùng snapshot 100 reviewed ở đầu tài liệu. Kích thước mặt đường vẫn là prior được ghi
 nguồn; việc duyệt ảnh không biến chúng thành số đo thực địa.
 
 ```powershell
@@ -786,3 +823,28 @@ class chỉ là placeholder cho loader; class gốc `car=0` vẫn được giữ
 Không lấy MOT TXT classless của timeline gốc rồi chấm như tất cả đều là pedestrian.
 Không áp dụng lại preprocessing ignore cho bản đã lọc. Đọc
 [`TRACKING_REPORT_AUDIT.md`](TRACKING_REPORT_AUDIT.md) để đối chiếu các mốc report.
+
+## Đối chứng v3 bật CMC và UCMCTrack gốc
+
+```powershell
+python scripts/compare_tracking_cmc.py val
+# Chỉ chạy test nếu val_selection.json có cmc_selected=true.
+python scripts/prepare_tracking_cmc_cache.py --workers 4
+python scripts/compare_tracking_cmc.py test
+```
+
+Script dùng `configs/tracking/v3_cmc.yaml`, chỉ đổi CMC so với cấu hình v3 đã
+chọn. Output riêng ở `outputs/tracking/cmc_v3`; không ghi đè các run v2/v3 cũ.
+Nhánh `upstream_hp_cmc` dùng tracker/Kalman nguyên gốc với HP và CMC, cùng các
+tham số số học, nhưng tắt sửa lifecycle, class voting và noise bổ sung ở biên.
+Đây là đối chứng được adapter cho UA-DETRAC, không phải điểm benchmark MOT17.
+
+Đọc `val_comparison.csv`, `val_selection.json`, `test_comparison.csv` và
+`test_difficulty.csv` nếu bước tương ứng đã hoàn tất. Script từ chối chạy CMC
+trên test khi CMC không thắng trên val. Chi tiết ở
+[`TRACKING_CMC_V3_REPORT.md`](TRACKING_CMC_V3_REPORT.md).
+
+Bước chuẩn bị cache dùng cùng hàm CMC nhưng xử lý các sequence độc lập song song;
+có thể bỏ qua bước này để runner tự tính tuần tự. Cache vẫn được kiểm tra checksum
+ảnh/code/detection khi tracking. Giảm `--workers` nếu máy đang dùng nhiều RAM;
+thời gian chuẩn bị cache phải được cộng khi báo chi phí lần chạy đầu.
