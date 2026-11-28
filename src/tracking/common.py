@@ -25,14 +25,14 @@ BASELINE = dict(
     interpolation=False,
     cmc=False,
     preview_frames=0,
+    boundary_sigma=0.0,
+    class_mode="separate",
 )
 
 
 def environment_versions():
     """Record numerical dependencies so a changed environment invalidates reuse."""
-    versions = dict(
-        python=platform.python_version(), platform=platform.platform()
-    )
+    versions = dict(python=platform.python_version(), platform=platform.platform())
     for package in (
         "numpy",
         "scipy",
@@ -60,9 +60,7 @@ def sha256_file(path):
 
 def fingerprint(value):
     """Hash JSON-compatible settings deterministically."""
-    return hashlib.sha256(
-        json.dumps(value, sort_keys=True).encode()
-    ).hexdigest()
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
 def write_json(path, value):
@@ -92,7 +90,7 @@ def resolve_config(config=None):
     result = {**BASELINE, **config}
     import math
 
-    for key in ("conf", "high_score", "a1", "a2", "wx", "wy", "vmax"):
+    for key in ("conf", "high_score", "a1", "a2", "wx", "wy", "vmax", "boundary_sigma"):
         if not math.isfinite(result[key]):
             raise ValueError(f"Nonfinite {key}")
     if not 0.05 <= result["conf"] <= result["high_score"] <= 1:
@@ -103,13 +101,15 @@ def resolve_config(config=None):
         if result[key] <= 0:
             raise ValueError(f"{key} must be positive")
     for key in ("max_age", "preview_frames"):
-        if not isinstance(result[key], int) or result[key] < (
-            key == "max_age"
-        ):
+        if not isinstance(result[key], int) or result[key] < (key == "max_age"):
             raise ValueError(f"Invalid {key}")
     for key in ("hp", "interpolation", "cmc"):
         if not isinstance(result[key], bool):
             raise ValueError(f"{key} must be boolean")
+    if result["boundary_sigma"] < 0:
+        raise ValueError("boundary_sigma must be nonnegative")
+    if result["class_mode"] not in ("separate", "shared_vote"):
+        raise ValueError("class_mode must be separate or shared_vote")
     return result
 
 

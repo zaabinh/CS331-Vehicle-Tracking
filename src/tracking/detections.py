@@ -29,9 +29,7 @@ def normalize_detections(path, sequence, num_frames):
     if missing:
         raise ValueError(f"{sequence}: missing columns {sorted(missing)}")
     values = (
-        source[SOURCE_COLUMNS]
-        .apply(pd.to_numeric, errors="coerce")
-        .to_numpy(float)
+        source[SOURCE_COLUMNS].apply(pd.to_numeric, errors="coerce").to_numpy(float)
     )
 
     def fail(mask, reason):
@@ -138,9 +136,7 @@ class GroundMapper:
         if not np.isfinite(projected).all() or abs(projected[2]) < 1e-12:
             raise ValueError("Ground projection is at infinity")
         position = projected[:2] / projected[2]
-        jacobian = (
-            self.H[:2, :2] - position[:, None] * self.H[2, :2]
-        ) / projected[2]
+        jacobian = (self.H[:2, :2] - position[:, None] * self.H[2, :2]) / projected[2]
         propagated = jacobian @ covariance @ jacobian.T
         if not np.isfinite(propagated).all():
             raise ValueError("Nonfinite mapped covariance")
@@ -153,10 +149,21 @@ class GroundMapper:
             raise ValueError("Image projection is at infinity")
         return point[0] / point[2], point[1] / point[2]
 
-    def mapto(self, bbox):
-        """Use 0.05*height on both axes, matching the cloned mapper.py."""
+    def mapto(self, bbox, image_size=None, boundary_sigma=0.0):
+        """Keep upstream noise by default; optionally model clipped footpoints."""
         x, y, w, h = bbox
         covariance = np.diag(
             [np.clip(0.05 * h, 2, 13) ** 2, np.clip(0.05 * h, 2, 10) ** 2]
         )
+        if boundary_sigma:
+            if not np.isfinite(boundary_sigma) or boundary_sigma < 0:
+                raise ValueError("boundary_sigma must be finite and nonnegative")
+            if image_size is None:
+                raise ValueError("Boundary noise requires image_size")
+            width, height = image_size
+            # A clipped box censors the footpoint on the affected image axis.
+            if x <= 2 or x + w >= width - 2:
+                covariance[0, 0] = max(covariance[0, 0], boundary_sigma**2)
+            if y + h >= height - 2:
+                covariance[1, 1] = max(covariance[1, 1], boundary_sigma**2)
         return self.uv2xy([x + w / 2, y + h], covariance)

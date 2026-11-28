@@ -46,12 +46,8 @@ def main():
         default=ROOT / "outputs/tracking/calibration/registry.json",
     )
     parser.add_argument("--output", type=Path)
-    parser.add_argument(
-        "--upstream", type=Path, default=ROOT / "UCMC/UCMCTrack"
-    )
-    parser.add_argument(
-        "--method", choices=["homography", "krt"], default="homography"
-    )
+    parser.add_argument("--upstream", type=Path, default=ROOT / "UCMC/UCMCTrack")
+    parser.add_argument("--method", choices=["homography", "krt"], default="homography")
     parser.add_argument(
         "--split", choices=["train", "val", "test", "all"], default="val"
     )
@@ -61,16 +57,21 @@ def main():
     )
     parser.add_argument("--resume", action="store_true")
     parser.add_argument(
+        "--fix-coasting",
+        action="store_true",
+        help="Correct expiry of unmatched confirmed upstream tracks",
+    )
+    parser.add_argument(
         "--allow-unreviewed",
         action="store_true",
         help="Experimental run only: use draft camera matrices without marking them reviewed",
     )
     parser.add_argument("--max-trials", type=int, default=15)
     args = parser.parse_args()
+    if args.fix_coasting and args.command != "run":
+        parser.error("--fix-coasting applies to run commands only")
     if args.allow_unreviewed and args.command != "run":
-        parser.error(
-            "--allow-unreviewed is restricted to experimental run commands"
-        )
+        parser.error("--allow-unreviewed is restricted to experimental run commands")
     from src.tracking.calibration import prepare_registry, resolve_calibration
 
     if args.command == "prepare-camera":
@@ -97,19 +98,13 @@ def main():
         if args.sequences and set(args.sequences) != set(SMOKE_SEQUENCES):
             parser.error("Smoke uses the three fixed smoke sequences")
         names = SMOKE_SEQUENCES
-    if (
-        not names
-        or len(set(names)) != len(names)
-        or set(names) - set(metadata)
-    ):
+    if not names or len(set(names)) != len(names) or set(names) - set(metadata):
         parser.error("Invalid sequence selection")
     if args.command == "status":
         status = []
         for name in names:
             try:
-                camera = resolve_calibration(
-                    args.calibration, name, args.method
-                )
+                camera = resolve_calibration(args.calibration, name, args.method)
                 status.append(
                     dict(
                         sequence=name,
@@ -128,10 +123,7 @@ def main():
                 )
         print(json.dumps(status, indent=2))
         return 0 if all(r["status"] == "reviewed" for r in status) else 2
-    output = (
-        args.output
-        or ROOT / "outputs/tracking" / f"{args.command}_{args.method}"
-    )
+    output = args.output or ROOT / "outputs/tracking" / f"{args.command}_{args.method}"
     if args.command == "adapt":
         from src.tracking.detections import (
             normalize_detections,
@@ -141,24 +133,18 @@ def main():
         handoff = json.loads(
             (args.detections / "detection_handoff_config.json").read_text()
         )
-        if handoff.get("class_mapping") != {
-            str(k): v for k, v in CLASS_NAMES.items()
-        }:
+        if handoff.get("class_mapping") != {str(k): v for k, v in CLASS_NAMES.items()}:
             raise ValueError("Detector handoff class mapping mismatch")
         if (
             output.resolve() == args.detections.resolve()
             or args.detections.resolve() in output.resolve().parents
         ):
-            raise ValueError(
-                "Adapted output must be outside source detections"
-            )
+            raise ValueError("Adapted output must be outside source detections")
         output.mkdir(parents=True, exist_ok=True)
         sources = {}
         for name in names:
             source = args.detections / f"{name}.csv"
-            rows = normalize_detections(
-                source, name, int(metadata[name]["num_frames"])
-            )
+            rows = normalize_detections(source, name, int(metadata[name]["num_frames"]))
             write_mot_detections(output / f"{name}.txt", rows)
             sources[name] = dict(
                 sha256=sha256_file(source),
@@ -180,9 +166,7 @@ def main():
     elif args.command == "evaluate":
         from src.tracking.evaluation import evaluate_run
 
-        result = evaluate_run(
-            args.dataset, output, args.upstream, args.sequences
-        )
+        result = evaluate_run(args.dataset, output, args.upstream, args.sequences)
     elif args.command == "run":
         from src.tracking.runner import run_tracking
 
@@ -198,6 +182,7 @@ def main():
             args.resume,
             args.upstream,
             allow_unreviewed=args.allow_unreviewed,
+            fix_coasting=args.fix_coasting,
         )
     elif args.command == "smoke":
         from src.tracking.tuning import run_smoke

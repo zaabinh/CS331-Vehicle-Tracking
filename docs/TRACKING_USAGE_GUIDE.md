@@ -599,3 +599,190 @@ Chỉ coi giai đoạn thực nghiệm hoàn thành khi đã chạy smoke thật
 val và hoàn thành lịch val cần thiết. Gói camera đầy đủ 100 sequences còn cần
 review từng sequence hoặc xác nhận chia sẻ phù hợp. Kiểm thử tổng hợp và sai số
 khớp bốn điểm không thay thế các bước nghiệm thu này.
+
+## Phân tích trường hợp tốt và xấu sau tracking
+
+Mở `notebooks/tracking/03_tracking_case_analysis.ipynb`, sửa `ROOT`, `DATASET` và
+`EXPERIMENT` trong cell môi trường rồi chạy lần lượt từ trên xuống. Notebook đọc
+kết quả đã lưu, không chạy lại detector hoặc tracker. Trên Colab, giải nén dataset
+và các gói output vào đúng cấu trúc thư mục trước; có thể đặt biến môi trường
+`UA_DETRAC_PROJECT`, `UA_DETRAC_DATASET`, `UA_DETRAC_EXPERIMENT` để đổi đường dẫn.
+
+Notebook xếp hạng sequence bằng HOTA đã lưu, so sánh baseline với cấu hình tốt
+nhất, chọn đoạn 5 giây tốt/xấu và vẽ overlay đồng bộ. Xanh lá là prediction khớp
+GT, đỏ là FP, cam là GT bị bỏ sót, tím là đổi ID; vùng ignore và prediction bị
+loại có màu xám. Frame chưa gán nhãn được ghi rõ là không chấm điểm.
+
+Dùng trình xem tương tác để chọn sequence, frame và class; nút Next error và
+Next IDS chuyển đến lỗi tiếp theo. Ảnh tĩnh và GIF vẫn xem được nếu frontend
+không hỗ trợ widget. GIF, biểu đồ, bảng chẩn đoán và sự kiện từng frame được lưu
+vào `EXPERIMENT/case_analysis/`. Cell phân tích kiểm tra FP/FN/IDS/Frag có khớp
+với evaluator đã lưu hay không; nếu không khớp thì dừng để tránh diễn giải sai.
+
+Logic nằm trong `src/analysis/tracking_cases.py`: `diagnose` tái hiện matching
+CLEAR IoU 0.7; `window_scores` chọn đoạn có đủ GT và annotation;
+`comparison_frame` vẽ baseline/best cùng ảnh; `export_clip` tạo GIF. F1 của đoạn
+ngắn và tỷ lệ GT được match chỉ là chỉ số chẩn đoán, không phải HOTA/IDF1.
+
+## Chạy lại validation với protocol v2
+
+Protocol v2 lọc cả GT và prediction theo union vùng ignore tại bước đánh giá,
+với ngưỡng 50% diện tích nhìn thấy. Canonical và raw không bị sửa. Các quy định
+khác về class, timeline, IoU và cách tổng hợp metric giữ nguyên. Đây là protocol
+của đồ án, không phải bản sao đầy đủ của PR-MOTA/toolkit UA-DETRAC.
+
+Chấm lại 15 cấu hình cũ, rồi tái lập cấu hình thắng và thử confidence 0,10/0,20:
+
+```powershell
+python scripts/revalidate_tracking.py --workers 3 --followups
+```
+
+Có thể đổi đường dẫn bằng `--dataset`, `--detections`, `--source`, `--output`,
+`--calibration`. Mặc định output mới là `outputs/tracking/validation_v2`, nguồn
+cũ là `outputs/tracking/tuning_h_approved_v1`. Không dùng cùng thư mục cho hai
+đối số này. Bỏ `--followups` nếu chỉ muốn chấm lại output đã có. Script kiểm tra
+fingerprint và checksum trước khi tái sử dụng kết quả; dùng lại cùng lệnh để
+resume với cùng code/input. Nếu code tracking hoặc input đổi, chọn output mới.
+
+Khi chạy đủ follow-up, `all_trials.csv` chứa bảng xếp hạng chung, `best_config.json`
+chỉ cấu hình được chọn. `runs/<config_id>/tracks` và `mot` của cấu hình thắng và
+baseline được đặt sẵn trong output mới. `reproduction_check.json` kiểm tra output
+tái lập có khớp từng byte với run gốc trên đủ 12 val sequences hay không.
+
+Để phân tích kết quả mới bằng notebook case analysis, đặt biến môi trường
+`UA_DETRAC_EXPERIMENT` tới thư mục `outputs/tracking/validation_v2` trước khi chạy
+cell thiết lập. Notebook đọc version từ `evaluation/protocol.json`, nên vẫn có
+thể mở lại kết quả v1 mà không áp dụng nhầm bộ lọc GT của v2.
+
+Audit coverage detector theo matching one-to-one, class và kích thước:
+
+```powershell
+python scripts/audit_tracking_detections.py
+```
+
+CSV được lưu trong `validation_v2/detection_audit`. Coverage class-agnostic chỉ
+dùng chẩn đoán nhầm class, không thay thế tiêu chí class-aware để chọn tracker.
+Các trace assignment/cost thật của upstream cho các frame mục tiêu được lưu
+trong `runs/reproduce_v2_winner/association_trace`; chúng không thay đổi matching.
+
+Đợt follow-up còn có đối chứng HP/high_score 0,4 và nhánh sửa lifecycle. Clone
+có thể giữ unmatched Confirmed quá max_age khi không có low-score detections.
+`src/tracking/lifecycle.py` sửa việc chuyển Coasted/hết hạn qua wrapper; không
+sửa trực tiếp clone. Bật bằng `--fix-coasting` trên lệnh `run`, hoặc
+`fix_coasting=True` khi gọi `run_tracking`. Mặc định giữ upstream để tái lập.
+`best_config.json` có trường `fix_coasting`; khi dùng YAML của cấu hình được
+chọn, cần truyền thêm flag nếu trường này là true. Không truyền flag vào lệnh
+`evaluate`: evaluator chỉ đọc output đã tạo, không chạy lại lifecycle.
+
+Cấu hình được chọn tại mốc v2 ngày 28/11/2026 là `best_val_v2.yaml`, HP bật, CMC tắt và
+`fix_coasting=true`. Chạy vào thư mục mới:
+
+```powershell
+python scripts/tracking_pipeline.py run --config configs/tracking/best_val_v2.yaml --calibration outputs/tracking/calibration/registry_approved_h_v1.json --fix-coasting --output outputs/tracking/run_best_val_v2
+python scripts/tracking_pipeline.py evaluate --output outputs/tracking/run_best_val_v2
+```
+
+Xem số liệu, các đối chứng và lỗi còn lại trong
+[`TRACKING_VAL_V2_REPORT.md`](TRACKING_VAL_V2_REPORT.md). Không dùng score v1
+và v2 làm một phép so sánh cải thiện mô hình vì tập GT được chấm đã thay đổi.
+
+## Cải thiện tracking bằng detection đã xuất
+
+Chạy các đối chứng trên đủ 12 val sequences mà không gọi lại YOLO:
+
+```powershell
+python scripts/refine_tracking.py
+```
+
+Script dùng cấu hình `validation_v2/runs/coasting_fix_hp` làm đối chứng, bật
+`fix_coasting=True` cho mọi lượt và giữ protocol v2. Output mặc định nằm trong
+`outputs/tracking/refinement_v3`. Có thể đổi `--dataset`, `--detections`,
+`--calibration`, `--reference`, `--output`; dùng `--trials control boundary_6`
+để chỉ chạy các lượt được chỉ định. Chạy lại cùng lệnh để resume; nếu code hoặc
+input đổi, chọn output mới. `run.log` ghi tiến độ, `leaderboard.csv` xếp hạng
+những lượt đã hoàn thành, `best_config.json` chỉ tới output thắng hiện tại.
+
+Các tùy chọn mới nằm trong YAML, được kiểm tra tại `src/tracking/common.py`:
+
+| Tùy chọn | Mặc định | Tác dụng |
+| --- | --- | --- |
+| `boundary_sigma` | `0.0` | Độ lệch chuẩn tối thiểu, đơn vị pixel, trên trục bị cắt ở biên; 0 giữ noise upstream |
+| `class_mode` | `separate` | Bốn tracker riêng như trước; `shared_vote` dùng một tracker chung và chọn class bằng tổng confidence của cả track |
+
+`GroundMapper.mapto` trong `src/tracking/detections.py` giữ nguyên điểm đáy giữa
+bbox. Khi `boundary_sigma > 0`, bbox cách biên trái/phải không quá 2 pixel được
+tăng uncertainty trên trục ảnh x; bbox cách biên dưới không quá 2 pixel được tăng
+uncertainty trên trục y. Covariance sau đó đi qua cùng Jacobian homography.
+Không thay tọa độ bbox, không tự suy ra phần xe nằm ngoài ảnh. Đây là giả thuyết
+measurement cần kiểm chứng trên val, không phải công thức gốc của benchmark.
+
+Với `class_mode: shared_vote`, `src/tracking/runner.py` cho phép association giữa
+các detection khác class. Mỗi detection được gán vào track đóng góp confidence
+vào class gốc; class có tổng lớn nhất trở thành class của toàn bộ track, hòa thì
+chọn class ID nhỏ hơn. Đây là xử lý **offline**, dùng cả các frame tương lai;
+không phù hợp để báo cáo như hệ thống realtime không độ trễ. Bbox/confidence gốc
+được giữ lại trong `raw_tracks`; `tracks` chứa kết quả sau HP/voting/interpolation.
+Vote được lưu trong `sequence_reports/*_class_votes.json` để kiểm tra. Nhầm class
+xuyên suốt một track vẫn có thể tồn tại; association chung cũng có thể nối nhầm
+hai xe gần nhau nên chỉ chọn nếu metric class-aware cải thiện.
+
+Các lượt còn lại dùng implementation hiện có: `interpolate_tracks` nội suy các
+khoảng thiếu ngắn giữa hai observation của cùng track/class; `max_age` thay thời
+gian giữ track mất detection; `a1/a2` thay ngưỡng assignment cost upstream, không
+phải ngưỡng IoU. Interpolation có thể thêm bbox sai, ngưỡng rộng có thể nối nhầm,
+vì vậy đều phải xem cả FP/FN/IDS thay vì chỉ số lượng track.
+
+Sau khi chọn cấu hình, dùng YAML `refinement_v3/best_config.yaml` cùng flag
+`--fix-coasting` để chạy lại; evaluator đọc class sau voting và vẫn chấm
+class-aware. Chi tiết kết quả trong
+[`TRACKING_REFINEMENT_V3_REPORT.md`](TRACKING_REFINEMENT_V3_REPORT.md).
+
+Đợt v3 chọn `configs/tracking/best_val_v3.yaml`: `class_mode=shared_vote`,
+`boundary_sigma=10`, HP và lifecycle fix bật, CMC/interpolation tắt. Có thể đặt
+`UA_DETRAC_EXPERIMENT` tới `outputs/tracking/refinement_v3` để mở notebook case
+analysis; `trials.csv` coi run `control` là baseline của đợt này.
+
+## Chạy test sau khi khóa cấu hình val
+
+```powershell
+python scripts/prepare_test_cameras.py
+python scripts/run_tracking_test.py
+```
+
+Lệnh đầu không sửa registry đã duyệt. Nó tạo registry mới ở
+`outputs/tracking/test_calibration_draft`, giữ 10 camera test đã có review và
+bổ sung 30 proposal dựa trên ảnh. Các proposal vẫn là `draft`, kích thước là
+prior chưa đo thực tế. Xem preview đầu/giữa/cuối để review; không sửa `status`
+thành reviewed nếu chưa có review thật. Kết quả test hiện phải được báo cáo cùng
+giới hạn hình học này.
+
+Lệnh thứ hai đọc `refinement_v3/best_config.json`, ghi `selection_lock.json`
+trước khi tracking, chạy đủ 40 test sequences và không tuning theo điểm test.
+Script có thể resume với code/input giống hệt; không sửa lock để thay cấu hình
+sau khi đã xem điểm. `completion.json` xác nhận đủ run/evaluation/subset combine.
+
+`difficulty_summary.csv` có hai hệ phân nhóm: Tracking và Detection từ toolkit.
+Tracking có một ID lặp và thiếu `MVI_40711`, vì vậy medium chỉ có 19 ID duy nhất
+và có nhóm `unassigned`. Detection có đủ 10/20/10 nhưng là cách chia khác. Điểm
+nhóm được combine từ metric internals qua `src/tracking/subsets.py`, không phải
+trung bình điểm các sequence. Xem [`TRACKING_TEST_V3_REPORT.md`](TRACKING_TEST_V3_REPORT.md).
+
+## Gói output dùng chung với TrackEval
+
+```powershell
+python scripts/export_tracking_bundle.py
+```
+
+Output mới là `outputs/tracking/delivery_v3/trackeval_bundle`. Gói gồm:
+
+- `runs/val` và `runs/test`: CSV class-aware, MOT theo frame gốc, manifest và metric.
+- `evaluation_input`: GT canonical cần cho evaluation, metadata, annotated frames,
+  vùng ignore; không cần ảnh để chấm saved predictions.
+- `mot_challenge`: bốn benchmark riêng car/bus/van/others cho loader MOT, đã lọc
+  ignore và compact timeline; `original_to_evaluation_frames.csv` giữ mapping.
+
+Theo README của gói để chọn đúng loader/protocol. Class `1` trong GT MOT tách
+class chỉ là placeholder cho loader; class gốc `car=0` vẫn được giữ trong CSV.
+Không lấy MOT TXT classless của timeline gốc rồi chấm như tất cả đều là pedestrian.
+Không áp dụng lại preprocessing ignore cho bản đã lọc. Đọc
+[`TRACKING_REPORT_AUDIT.md`](TRACKING_REPORT_AUDIT.md) để đối chiếu các mốc report.

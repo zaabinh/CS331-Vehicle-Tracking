@@ -1,0 +1,14 @@
+# Run with --fix-coasting to enable the lifecycle correction.
+a1: 40.0
+a2: 40.0
+cmc: false
+conf: 0.05
+fps: 25
+high_score: 0.6
+hp: true
+interpolation: false
+max_age: 30
+preview_frames: 0
+vmax: 15.0
+wx: 10.0
+wy: 10.0

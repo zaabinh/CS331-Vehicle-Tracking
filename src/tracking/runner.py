@@ -1,4 +1,4 @@
-"""Run the unchanged upstream UCMC tracker on complete UA-DETRAC timelines."""
+"""Run upstream UCMC with explicit, reproducible optional adaptations."""
 
 import importlib
 import json
@@ -29,6 +29,7 @@ from .detections import (
     detections_by_frame,
     load_cached_detections,
 )
+from .lifecycle import update_tracker
 
 TRACK_COLUMNS = [
     "frame_id",
@@ -65,9 +66,7 @@ class _Provider:
         affine = self.transforms[frame_id]
         center = affine[:, :2] @ [u, v - h / 2] + affine[:, 2]
         wh = affine[:, :2] @ [w, h]
-        position, _ = self.mapper.uv2xy(
-            [center[0], center[1] + wh[1] / 2], np.eye(2)
-        )
+        position, _ = self.mapper.uv2xy([center[0], center[1] + wh[1] / 2], np.eye(2))
         return float(position[0, 0]), float(position[1, 0])
 
 
@@ -85,13 +84,10 @@ def interpolate_tracks(table, max_age):
                 for frame in range(left.frame_id + 1, right.frame_id):
                     weight = (frame - left.frame_id) / gap
                     box = [
-                        (1 - weight) * getattr(left, c)
-                        + weight * getattr(right, c)
+                        (1 - weight) * getattr(left, c) + weight * getattr(right, c)
                         for c in ["x", "y", "w", "h"]
                     ]
-                    extra.append(
-                        [frame, left.track_id, left.class_id, *box, -1.0]
-                    )
+                    extra.append([frame, left.track_id, left.class_id, *box, -1.0])
     return pd.concat(
         [table, pd.DataFrame(extra, columns=TRACK_COLUMNS)], ignore_index=True
     ).sort_values(["frame_id", "track_id"])
@@ -149,8 +145,10 @@ def run_tracking(
     resume=False,
     upstream=None,
     allow_unreviewed=False,
+    trace=False,
+    fix_coasting=False,
 ):
-    """Run each class independently; draft cameras require explicit opt-in."""
+    """Run full timelines; shared association and offline class voting are opt-in."""
     upstream, dataset, detections, output = (
         Path(upstream or UPSTREAM),
         Path(dataset),
@@ -160,8 +158,7 @@ def run_tracking(
     config = resolve_config(config)
     metadata = read_sequences(dataset)
     selected = sorted(
-        sequences
-        or [s for s, info in metadata.items() if info["split"] == "val"]
+        sequences or [s for s, info in metadata.items() if info["split"] == "val"]
     )
     if (
         not selected
@@ -192,8 +189,7 @@ def run_tracking(
             errors.append(f"{sequence}/{method}: {exc}")
     if errors:
         raise ValueError(
-            "Camera preflight failed; no tracking started:\n"
-            + "\n".join(errors)
+            "Camera preflight failed; no tracking started:\n" + "\n".join(errors)
         )
     handoff_path = detections / "detection_handoff_config.json"
     handoff = json.loads(handoff_path.read_text())
@@ -201,14 +197,13 @@ def run_tracking(
     if handoff.get("class_mapping") != expected:
         raise ValueError("Detector handoff class mapping differs from dataset")
     if config["conf"] < float(handoff["conf_threshold"]):
-        raise ValueError(
-            "Requested confidence is below the detector export floor"
-        )
+        raise ValueError("Requested confidence is below the detector export floor")
     files = {s: find_detection_csv(detections, s) for s in selected}
     code_files = list((upstream / "tracker").glob("*.py")) + list(
         Path(__file__).parent.glob("*.py")
     )
     provenance = dict(
+        trace=trace,
         allow_unreviewed=allow_unreviewed,
         calibration_reviewed=not allow_unreviewed
         and all(c.get("status") == "reviewed" for c in cameras.values()),
@@ -229,19 +224,17 @@ def run_tracking(
             s: fingerprint(
                 [
                     sha256_file(p)
-                    for _, p in sorted(
-                        find_sequence_images(dataset, s).items()
-                    )
+                    for _, p in sorted(find_sequence_images(dataset, s).items())
                 ]
             )
             for s in selected
         }
+    if fix_coasting:
+        provenance["fix_coasting"] = True
     key = fingerprint(provenance)
     manifest_path = output / "run_manifest.json"
     previous = (
-        json.loads(manifest_path.read_text())
-        if manifest_path.is_file()
-        else None
+        json.loads(manifest_path.read_text()) if manifest_path.is_file() else None
     )
     if previous:
         if not resume or previous.get("fingerprint") != key:
@@ -256,9 +249,7 @@ def run_tracking(
             logging.info("Reusing matching completed run: %s", output)
             return previous
     elif output.exists() and any(output.iterdir()):
-        raise FileExistsError(
-            f"Nonempty run directory without a manifest: {output}"
-        )
+        raise FileExistsError(f"Nonempty run directory without a manifest: {output}")
     output.mkdir(parents=True, exist_ok=True)
     for folder in ["tracks", "raw_tracks", "mot", "sequence_reports"]:
         (output / folder).mkdir(exist_ok=True)
@@ -309,11 +300,12 @@ def run_tracking(
                     output / "sequence_reports" / f"{sequence}_gmc.json",
                     gmc_manifest,
                 )
-            cmc_seconds = (
-                time.perf_counter() - cmc_started if config["cmc"] else 0.0
-            )
+            cmc_seconds = time.perf_counter() - cmc_started if config["cmc"] else 0.0
             provider = _Provider(mapper, transforms)
             kalman_cls.count = 1
+            categories = (
+                [None] if config["class_mode"] == "shared_vote" else CLASS_NAMES
+            )
             trackers = {
                 c: tracker_cls(
                     config["a1"],
@@ -328,13 +320,15 @@ def run_tracking(
                     config["cmc"],
                     provider,
                 )
-                for c in CLASS_NAMES
+                for c in categories
             }
             raw, histories, activated = [], {}, set()
+            class_votes = {}
+            trace_rows, trace_costs = [], []
             mapped_seconds, update_seconds = 0.0, 0.0
             for frame in range(1, int(info["num_frames"]) + 1):
                 clock = time.perf_counter()
-                class_dets = {c: [] for c in CLASS_NAMES}
+                class_dets = {c: [] for c in categories}
                 for row in by_frame.get(frame, []):
                     if row[6] < config["conf"]:
                         continue
@@ -346,19 +340,91 @@ def run_tracking(
                         bb_width=row[4],
                         bb_height=row[5],
                         track_id=0,
+                        class_id=int(row[7]),
                     )
                     try:
-                        detection.y, detection.R = mapper.mapto(row[2:6])
+                        detection.y, detection.R = mapper.mapto(
+                            row[2:6],
+                            cameras[sequence]["image_size"],
+                            config["boundary_sigma"],
+                        )
                     except ValueError as exc:
                         raise ValueError(
                             f"{sequence}/frame {frame}/det {int(row[1])}: {exc}"
                         ) from exc
-                    class_dets[int(row[7])].append(detection)
+                    category = (
+                        None if config["class_mode"] == "shared_vote" else int(row[7])
+                    )
+                    class_dets[category].append(detection)
                 mapped_seconds += time.perf_counter() - clock
                 clock = time.perf_counter()
                 for category, tracker in trackers.items():
                     dets = class_dets[category]
-                    tracker.update(dets, frame)
+                    # Record actual costs without changing upstream assignment.
+                    tracing = trace and (
+                        sequence == "MVI_39771"
+                        and (frame <= 60 or 370 <= frame <= 505)
+                        or sequence == "MVI_20052"
+                        and 520 <= frame <= 650
+                    )
+                    previous_ids = {t.id for t in tracker.trackers}
+                    originals = []
+                    if tracing:
+                        lookup = {d.y.tobytes(): d.id for d in dets}
+                        for track in tracker.trackers:
+                            original = track.distance
+                            originals.append((track, original))
+
+                            def distance(
+                                y, covariance, original=original, tid=track.id
+                            ):
+                                cost = original(y, covariance)
+                                trace_costs.append(
+                                    [
+                                        frame,
+                                        category,
+                                        tid,
+                                        lookup.get(y.tobytes()),
+                                        float(cost),
+                                    ]
+                                )
+                                return cost
+
+                            track.distance = distance
+                    update_tracker(tracker, dets, frame, fix_coasting)
+                    if config["class_mode"] == "shared_vote":
+                        for track in tracker.trackers:
+                            if 0 <= track.detidx < len(dets):
+                                d = dets[track.detidx]
+                                votes = class_votes.setdefault(
+                                    track.id, np.zeros(len(CLASS_NAMES))
+                                )
+                                votes[d.class_id] += d.conf
+                    for track, original in originals:
+                        track.distance = original
+                    if tracing:
+                        for track in tracker.trackers:
+                            if 0 <= track.detidx < len(dets):
+                                d = dets[track.detidx]
+                                trace_rows.append(
+                                    [
+                                        frame,
+                                        category,
+                                        d.id,
+                                        track.id,
+                                        track.status.name,
+                                        track.id not in previous_ids,
+                                        d.conf,
+                                        float(d.y[0, 0]),
+                                        float(d.y[1, 0]),
+                                        float(d.R[0, 0]),
+                                        float(d.R[1, 1]),
+                                        d.bb_left,
+                                        d.bb_top,
+                                        d.bb_width,
+                                        d.bb_height,
+                                    ]
+                                )
                     for tidx in tracker.confirmed_idx:
                         track = tracker.trackers[tidx]
                         if not 0 <= track.detidx < len(dets):
@@ -367,7 +433,7 @@ def run_tracking(
                         record = [
                             frame,
                             track.id,
-                            category,
+                            d.class_id,
                             d.bb_left,
                             d.bb_top,
                             d.bb_width,
@@ -377,16 +443,14 @@ def run_tracking(
                         raw.append(record)
                         activated.add(track.id)
                     if config["hp"]:
-                        for tidx in (
-                            tracker.tentative_idx + tracker.confirmed_idx
-                        ):
+                        for tidx in tracker.tentative_idx + tracker.confirmed_idx:
                             track = tracker.trackers[tidx]
                             if 0 <= track.detidx < len(dets):
                                 d = dets[track.detidx]
                                 histories.setdefault(track.id, {})[frame] = [
                                     frame,
                                     track.id,
-                                    category,
+                                    d.class_id,
                                     d.bb_left,
                                     d.bb_top,
                                     d.bb_width,
@@ -395,15 +459,44 @@ def run_tracking(
                                 ]
                 update_seconds += time.perf_counter() - clock
                 if frame % 250 == 0 or frame == int(info["num_frames"]):
-                    logging.info(
-                        "%s frame %d/%d", sequence, frame, info["num_frames"]
-                    )
+                    logging.info("%s frame %d/%d", sequence, frame, info["num_frames"])
             raw_table = pd.DataFrame(raw, columns=TRACK_COLUMNS).sort_values(
                 ["frame_id", "track_id"]
             )
-            raw_table.to_csv(
-                output / "raw_tracks" / f"{sequence}.csv", index=False
-            )
+            raw_table.to_csv(output / "raw_tracks" / f"{sequence}.csv", index=False)
+            if trace_rows:
+                folder = output / "association_trace"
+                folder.mkdir(exist_ok=True)
+                pd.DataFrame(
+                    trace_rows,
+                    columns=[
+                        "frame_id",
+                        "class_id",
+                        "det_id",
+                        "track_id",
+                        "status",
+                        "new_track",
+                        "confidence",
+                        "ground_x",
+                        "ground_y",
+                        "variance_x",
+                        "variance_y",
+                        "x",
+                        "y",
+                        "w",
+                        "h",
+                    ],
+                ).to_csv(folder / f"{sequence}_assignments.csv", index=False)
+                pd.DataFrame(
+                    trace_costs,
+                    columns=[
+                        "frame_id",
+                        "class_id",
+                        "track_id",
+                        "det_id",
+                        "cost",
+                    ],
+                ).to_csv(folder / f"{sequence}_costs.csv", index=False)
             post_started = time.perf_counter()
             if config["hp"]:
                 padded = [
@@ -414,6 +507,14 @@ def run_tracking(
                 table = pd.DataFrame(padded, columns=TRACK_COLUMNS)
             else:
                 table = raw_table.copy()
+            if config["class_mode"] == "shared_vote":
+                # Offline output: one confidence-weighted class per complete track.
+                labels = {tid: int(np.argmax(v)) for tid, v in class_votes.items()}
+                table["class_id"] = table.track_id.map(labels).astype(int)
+                write_json(
+                    output / "sequence_reports" / f"{sequence}_class_votes.json",
+                    {str(tid): v.tolist() for tid, v in class_votes.items()},
+                )
             if config["interpolation"]:
                 table = interpolate_tracks(table, config["max_age"])
             table = table.sort_values(["frame_id", "track_id"])
@@ -423,14 +524,10 @@ def run_tracking(
                 ["frame_id", "track_id", "x", "y", "w", "h", "confidence"]
             ].copy()
             mot["u1"], mot["u2"], mot["u3"] = -1, -1, -1
-            mot.to_csv(
-                output / "mot" / f"{sequence}.txt", header=False, index=False
-            )
+            mot.to_csv(output / "mot" / f"{sequence}.txt", header=False, index=False)
             preview_started = time.perf_counter()
             if config["preview_frames"]:
-                _preview(
-                    dataset, sequence, table, output, config["preview_frames"]
-                )
+                _preview(dataset, sequence, table, output, config["preview_frames"])
             report = dict(
                 frames_processed=int(info["num_frames"]),
                 adapter_seconds=adapt_seconds,
@@ -443,9 +540,7 @@ def run_tracking(
                 output_rows=len(table),
                 track_fps=int(info["num_frames"]) / max(update_seconds, 1e-12),
             )
-            write_json(
-                output / "sequence_reports" / f"{sequence}.json", report
-            )
+            write_json(output / "sequence_reports" / f"{sequence}.json", report)
             manifest["sequence_reports"][sequence] = report
             manifest["outputs"][sequence] = {
                 f"{folder}/{sequence}.{ext}": sha256_file(
@@ -461,8 +556,7 @@ def run_tracking(
         manifest.update(
             status="complete",
             runtime_seconds=sum(
-                r["total_seconds"]
-                for r in manifest["sequence_reports"].values()
+                r["total_seconds"] for r in manifest["sequence_reports"].values()
             ),
         )
         write_json(manifest_path, manifest)

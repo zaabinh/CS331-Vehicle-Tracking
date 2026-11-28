@@ -7,6 +7,7 @@ import logging
 import sys
 import time
 import types
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -37,19 +38,42 @@ PRED_COLUMNS = [
     "confidence",
 ]
 PROTOCOL = dict(
-    version=1,
+    version=2,
     clear_empty_frame_reset=True,
     official_pr_mota=False,
     clear_iou_threshold=0.7,
     identity_iou_threshold=0.7,
     hota_thresholds=list(np.arange(5, 100, 5) / 100),
     frame_policy="Compact XML-declared frames in order; preserve IDs across gaps",
-    ignore_policy="Predictions: visible union overlap >= 0.5; GT unchanged",
+    ignore_policy="GT and predictions: remove visible union overlap >= 0.5 per observation",
+    ignore_source="DETRAC-MOT-toolkit/utils/parseGT.m and evaluation/dropTracks.m; project per-box policy, not toolkit trajectory trimming",
     aggregation="TrackEval combine_sequences then combine_classes_det_averaged",
     score_scale="0-100",
     count_scale="integer",
     gt_extra_filters=False,
 )
+
+
+def filter_evaluation_boxes(table, regions, width, height):
+    """Apply the same ignore mask to GT and predictions, leaving sources intact."""
+    boxes = [
+        [*box, index]
+        for box, index in zip(table[["x", "y", "w", "h"]].to_numpy(float), table.index)
+    ]
+    kept = filter_ignored_boxes(boxes, regions, int(width), int(height), 0.5)
+    return table.loc[[int(box[-1]) for box in kept]].copy()
+
+
+@lru_cache(maxsize=1)
+def _canonical_rows(path, selected, size, mtime_ns):
+    """Reuse the large canonical CSV during batch evaluation; stat keys invalidate it."""
+    return pd.concat(
+        [
+            chunk[chunk.sequence.isin(selected)]
+            for chunk in pd.read_csv(path, usecols=GT_COLUMNS, chunksize=100_000)
+        ],
+        ignore_index=True,
+    )
 
 
 def _metrics(upstream):
@@ -74,9 +98,9 @@ def _metrics(upstream):
         "CLEAR": importlib.import_module(name + ".metrics.clear").CLEAR(
             {"THRESHOLD": 0.7, "PRINT_CONFIG": False}
         ),
-        "Identity": importlib.import_module(
-            name + ".metrics.identity"
-        ).Identity({"THRESHOLD": 0.7, "PRINT_CONFIG": False}),
+        "Identity": importlib.import_module(name + ".metrics.identity").Identity(
+            {"THRESHOLD": 0.7, "PRINT_CONFIG": False}
+        ),
     }
 
 
@@ -127,9 +151,7 @@ def _validate_boxes(table, num_frames, context):
         table[column] = table[column].astype(int)
     if not table.frame_id.between(1, num_frames).all():
         raise ValueError(f"{context}: frame_id outside timeline")
-    if (table.track_id < 0).any() or not table.class_id.isin(
-        CLASS_NAMES
-    ).all():
+    if (table.track_id < 0).any() or not table.class_id.isin(CLASS_NAMES).all():
         raise ValueError(f"{context}: invalid track/class ID")
     if ((table.w <= 0) | (table.h <= 0)).any():
         raise ValueError(f"{context}: nonpositive box size")
@@ -157,12 +179,18 @@ def _iou(gt, pred):
 def _metric_data(gt, pred, frames):
     """Map IDs to contiguous metric indices without breaking identity at gaps."""
     gt_map = {value: i for i, value in enumerate(sorted(gt.track_id.unique()))}
-    pred_map = {
-        value: i for i, value in enumerate(sorted(pred.track_id.unique()))
-    }
-    gg, pg = dict(tuple(gt.groupby("frame_id"))), dict(
-        tuple(pred.groupby("frame_id"))
-    )
+    pred_map = {value: i for i, value in enumerate(sorted(pred.track_id.unique()))}
+
+    def grouped(table, mapping):
+        boxes = table[["x", "y", "w", "h"]].to_numpy(float)
+        ids = np.array([mapping[x] for x in table.track_id], dtype=int)
+        return {
+            int(f): (ids[index], boxes[index])
+            for f, index in table.groupby("frame_id").indices.items()
+        }
+
+    gg, pg = grouped(gt, gt_map), grouped(pred, pred_map)
+    empty = (np.empty(0, dtype=int), np.empty((0, 4)))
     data = dict(
         num_timesteps=len(frames),
         num_gt_ids=len(gt_map),
@@ -176,16 +204,10 @@ def _metric_data(gt, pred, frames):
         similarity_scores=[],
     )
     for frame in frames:
-        g, p = gg.get(frame, gt.iloc[:0]), pg.get(frame, pred.iloc[:0])
-        gb, pb = g[["x", "y", "w", "h"]].to_numpy(float), p[
-            ["x", "y", "w", "h"]
-        ].to_numpy(float)
-        data["gt_ids"].append(
-            np.array([gt_map[x] for x in g.track_id], dtype=int)
-        )
-        data["tracker_ids"].append(
-            np.array([pred_map[x] for x in p.track_id], dtype=int)
-        )
+        gids, gb = gg.get(frame, empty)
+        pids, pb = pg.get(frame, empty)
+        data["gt_ids"].append(gids)
+        data["tracker_ids"].append(pids)
         data["gt_dets"].append(gb)
         data["tracker_dets"].append(pb)
         data["similarity_scores"].append(_iou(gb, pb))
@@ -210,9 +232,7 @@ def _summary(results):
 
 def _combine(metrics, results, macro=False):
     method = (
-        "combine_classes_class_averaged"
-        if macro
-        else "combine_classes_det_averaged"
+        "combine_classes_class_averaged" if macro else "combine_classes_det_averaged"
     )
     return {
         name: getattr(metric, method)(
@@ -234,7 +254,7 @@ def _plain(value):
     return value
 
 
-def evaluate_run(dataset, run_dir, upstream=None, sequences=None):
+def evaluate_run(dataset, run_dir, upstream=None, sequences=None, output_dir=None):
     """Evaluate a saved class-aware tracking run with the explicit project protocol."""
     started = time.perf_counter()
     dataset, run_dir, upstream = (
@@ -243,33 +263,21 @@ def evaluate_run(dataset, run_dir, upstream=None, sequences=None):
         Path(upstream or UPSTREAM),
     )
     manifest_path = run_dir / "run_manifest.json"
-    manifest = (
-        json.loads(manifest_path.read_text())
-        if manifest_path.is_file()
-        else {}
-    )
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
     selected = sorted(sequences or manifest.get("sequences", []))
     if not selected or len(selected) != len(set(selected)):
         raise ValueError("Evaluation requires a unique nonempty sequence list")
-    metadata = pd.read_csv(dataset / "metadata/sequences.csv").set_index(
-        "sequence"
-    )
-    if metadata.index.duplicated().any() or set(selected) - set(
-        metadata.index
-    ):
+    metadata = pd.read_csv(dataset / "metadata/sequences.csv").set_index("sequence")
+    if metadata.index.duplicated().any() or set(selected) - set(metadata.index):
         raise ValueError("Invalid or missing sequence metadata")
     annotated = pd.read_csv(dataset / "metadata/annotated_frames.csv")
     if annotated.duplicated(["sequence", "frame_id"]).any():
         raise ValueError("Duplicate annotated frame entries")
-    parts = [
-        chunk[chunk.sequence.isin(selected)]
-        for chunk in pd.read_csv(
-            dataset / "canonical/annotations.csv",
-            usecols=GT_COLUMNS,
-            chunksize=100_000,
-        )
-    ]
-    canonical = pd.concat(parts, ignore_index=True)
+    path = (dataset / "canonical/annotations.csv").resolve()
+    stat = path.stat()
+    canonical = _canonical_rows(
+        str(path), tuple(selected), stat.st_size, stat.st_mtime_ns
+    )
     ignored = pd.read_csv(dataset / "canonical/ignored_regions.csv")
     metrics, all_results, sequence_rows, frame_rows = (
         _metrics(upstream),
@@ -287,15 +295,11 @@ def evaluate_run(dataset, run_dir, upstream=None, sequences=None):
         if (
             not frames
             or not np.isfinite(frames).all()
-            or any(
-                f != int(f) or not 1 <= f <= info.num_frames for f in frames
-            )
+            or any(f != int(f) or not 1 <= f <= info.num_frames for f in frames)
         ):
             raise ValueError(f"{sequence}: invalid annotation timeline")
         gt = canonical[canonical.sequence == sequence].copy()
-        pred = pd.read_csv(
-            run_dir / "tracks" / f"{sequence}.csv", usecols=PRED_COLUMNS
-        )
+        pred = pd.read_csv(run_dir / "tracks" / f"{sequence}.csv", usecols=PRED_COLUMNS)
         _validate_boxes(gt, info.num_frames, f"{sequence} GT")
         _validate_boxes(pred, info.num_frames, f"{sequence} prediction")
         count = len(pred)
@@ -305,22 +309,17 @@ def evaluate_run(dataset, run_dir, upstream=None, sequences=None):
         regions = ignored.loc[
             ignored.sequence == sequence, ["x", "y", "w", "h"]
         ].to_numpy(float)
-        boxes = [
-            [r.x, r.y, r.w, r.h, i] for i, r in enumerate(pred.itertuples())
-        ]
-        kept = filter_ignored_boxes(
-            boxes, regions, int(info.width), int(info.height), 0.5
-        )
-        removed = len(pred) - len(kept)
-        pred = pred.iloc[[int(box[-1]) for box in kept]]
+        gt_count, pred_count = len(gt), len(pred)
+        gt = filter_evaluation_boxes(gt, regions, info.width, info.height)
+        pred = filter_evaluation_boxes(pred, regions, info.width, info.height)
+        removed = pred_count - len(pred)
         results = {}
         for class_id, name in CLASS_NAMES.items():
             g, p = gt[gt.class_id == class_id], pred[pred.class_id == class_id]
             activity[name] += len(g) + len(p)
             data = _metric_data(g, p, frames)
             results[name] = {
-                key: metric.eval_sequence(data)
-                for key, metric in metrics.items()
+                key: metric.eval_sequence(data) for key, metric in metrics.items()
             }
         all_results[sequence] = results
         sequence_rows.append(
@@ -331,6 +330,8 @@ def evaluate_run(dataset, run_dir, upstream=None, sequences=None):
                 evaluated_frames=len(frames),
                 unannotated_prediction_count=unknown,
                 ignored_prediction_count=removed,
+                ignored_gt_count=gt_count - len(gt),
+                evaluated_gt_count=len(gt),
             )
         )
         frame_rows.extend(
@@ -346,40 +347,33 @@ def evaluate_run(dataset, run_dir, upstream=None, sequences=None):
         }
         for name in CLASS_NAMES.values()
     }
-    active = {
-        name: result for name, result in combined.items() if activity[name]
-    }
+    active = {name: result for name, result in combined.items() if activity[name]}
     class_rows = [
         dict(class_id=i, class_name=name, **_summary(combined[name]))
         for i, name in CLASS_NAMES.items()
     ]
     result = dict(
         **_summary(_combine(metrics, combined)),
-        macro_average=_summary(
-            _combine(metrics, active or combined, macro=True)
-        ),
+        macro_average=_summary(_combine(metrics, active or combined, macro=True)),
         per_class=class_rows,
         sequences=selected,
         sequence_count=len(selected),
         evaluated_frame_count=len(frame_rows),
         runtime_seconds=manifest.get("runtime_seconds"),
-        evaluation_fingerprint=evaluation_fingerprint(
-            dataset, upstream, selected
-        ),
+        evaluation_fingerprint=evaluation_fingerprint(dataset, upstream, selected),
         prediction_checksums={
             s: sha256_file(run_dir / "tracks" / f"{s}.csv") for s in selected
         },
         evaluation_seconds=time.perf_counter() - started,
         official_pr_mota=False,
+        protocol_version=PROTOCOL["version"],
         calibration_reviewed=manifest.get("provenance", {}).get(
             "calibration_reviewed", True
         ),
     )
-    output = run_dir / "evaluation"
+    output = Path(output_dir) if output_dir is not None else run_dir / "evaluation"
     output.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(sequence_rows).to_csv(
-        output / "per_sequence.csv", index=False
-    )
+    pd.DataFrame(sequence_rows).to_csv(output / "per_sequence.csv", index=False)
     pd.DataFrame(class_rows).to_csv(output / "per_class.csv", index=False)
     pd.DataFrame(
         [

@@ -24,3 +24,11 @@ disclosing this patch.
 
 Metric modules load through an isolated namespace to avoid unrelated dataset
 adapters and optional dependencies. The tracker and Kalman source are unchanged.
+
+Project adaptations are outside the clone: `src/tracking/lifecycle.py` optionally
+corrects unmatched Confirmed-track expiry; `GroundMapper.mapto` optionally raises
+image-space uncertainty on clipped axes; `runner.py` optionally shares one
+upstream tracker across classes and assigns an offline confidence-weighted class
+to each track. These change project behavior when enabled, even though the clone
+source is preserved. The val-selected v3 configuration enables these adaptations.
+See [the v3 report](TRACKING_REFINEMENT_V3_REPORT.md) for ablations and limits.

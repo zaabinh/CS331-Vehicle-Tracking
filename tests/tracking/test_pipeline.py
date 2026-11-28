@@ -345,7 +345,7 @@ class TrackingTests(unittest.TestCase):
         self.assertEqual(result["IDF1"], 0)
         self.assertEqual(result["FN"], 1)
 
-    def test_ignore_union_and_no_gt_filter(self):
+    def test_ignore_union_and_symmetric_gt_filter(self):
         self.fixture([], [box(x=0, y=0, w=21, h=10)])
         regions = pd.DataFrame(
             [dict(sequence="S1", x=x, y=0, w=6, h=10) for x in [0, 4]]
@@ -362,7 +362,7 @@ class TrackingTests(unittest.TestCase):
         regions.to_csv(
             self.dataset / "canonical/ignored_regions.csv", index=False
         )
-        self.assertEqual(evaluate_run(self.dataset, self.run)["FN"], 1)
+        self.assertEqual(evaluate_run(self.dataset, self.run)["FN"], 0)
 
     def test_detection_weighted_aggregation(self):
         gt = [box(), box(track=2, category=1, x=120)]
